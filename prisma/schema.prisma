@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  name      String
+  role      String     @default("TEACHER")
+  createdAt DateTime   @default(now())
+  questions Question[]
+}
+
+model EducationLevel {
+  id        String            @id @default(cuid())
+  name      String            @unique
+  questions Question[]
+  packages  QuestionPackage[]
+}
+
+model Subject {
+  id        String            @id @default(cuid())
+  name      String            @unique
+  topics    Topic[]
+  questions Question[]
+  packages  QuestionPackage[]
+}
+
+model PackageType {
+  id      String @id @default(cuid())
+  code    String @unique
+  name    String @unique
+}
+
+model Topic {
+  id        String     @id @default(cuid())
+  name      String
+  subjectId String
+  subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  questions Question[]
+  @@unique([subjectId, name])
+}
+
+model Question {
+  id                String          @id @default(cuid())
+  questionText      String
+  educationLevelId  String
+  educationLevel    EducationLevel  @relation(fields: [educationLevelId], references: [id])
+  grade             String
+  subjectId         String
+  subject           Subject         @relation(fields: [subjectId], references: [id])
+  topicId           String
+  topic             Topic           @relation(fields: [topicId], references: [id])
+  difficulty        String          @default("MEDIUM")
+  status            String          @default("NEEDS_REVIEW")
+  mediaNeed         String          @default("NOT_CHECKED")
+  mediaExclusionNote String?
+  sourceType        String          @default("AI_GENERATED")
+  rejectionReason   String?
+  createdById       String?
+  createdBy         User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  validatedAt       DateTime?
+  options           AnswerOption[]
+  media             QuestionMedia[]
+  packageQuestions  PackageQuestion[]
+  studentAnswers    StudentAnswer[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+model AnswerOption {
+  id          String   @id @default(cuid())
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  label       String
+  text        String
+  isCorrect   Boolean  @default(false)
+  explanation String
+  sortOrder   Int
+  studentAnswers StudentAnswer[]
+  @@unique([questionId, label])
+}
+
+model MediaAsset {
+  id          String          @id @default(cuid())
+  title       String
+  description String?
+  filePath    String?
+  mimeType    String?
+  mediaType   String          @default("IMAGE")
+  sourceType  String          @default("INTERNAL")
+  sourceUrl   String?
+  licenseNote String?
+  status      String          @default("ACTIVE")
+  questions   QuestionMedia[]
+  createdAt   DateTime        @default(now())
+}
+
+model QuestionMedia {
+  id            String     @id @default(cuid())
+  questionId    String
+  question      Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  mediaAssetId  String
+  mediaAsset    MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  isPrimary     Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  @@unique([questionId, mediaAssetId])
+}
+
+model QuestionPackage {
+  id               String           @id @default(cuid())
+  title            String
+  description      String?
+  packageType      String           @default("PRACTICE")
+  status           String           @default("DRAFT")
+  educationLevelId String
+  educationLevel   EducationLevel   @relation(fields: [educationLevelId], references: [id])
+  grade            String
+  subjectId        String
+  subject          Subject          @relation(fields: [subjectId], references: [id])
+  questions        PackageQuestion[]
+  attempts         QuizAttempt[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
+
+model PackageQuestion {
+  id          String          @id @default(cuid())
+  packageId   String
+  package     QuestionPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    Question       @relation(fields: [questionId], references: [id])
+  orderIndex  Int
+  @@unique([packageId, questionId])
+  @@unique([packageId, orderIndex])
+}
+
+model QuizAttempt {
+  id                String            @id @default(cuid())
+  packageId         String
+  package           QuestionPackage   @relation(fields: [packageId], references: [id])
+  studentDisplayName String
+  score             Int?
+  totalQuestions    Int
+  correctCount      Int?
+  wrongCount        Int?
+  startedAt         DateTime          @default(now())
+  submittedAt       DateTime?
+  answers           StudentAnswer[]
+  distributions     ResultDistribution[]
+}
+
+model StudentAnswer {
+  id               String      @id @default(cuid())
+  attemptId        String
+  attempt          QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId       String
+  question         Question    @relation(fields: [questionId], references: [id])
+  selectedOptionId String?
+  selectedOption   AnswerOption? @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+  isCorrect        Boolean
+  createdAt        DateTime    @default(now())
+  @@unique([attemptId, questionId])
+}
+
+model ResultDistribution {
+  id             String        @id @default(cuid())
+  attemptId      String
+  attempt        QuizAttempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  recipientType  String
+  channel        String
+  recipientLabel String
+  status         String         @default("SIMULATED")
+  messagePreview String
+  createdAt      DateTime      @default(now())
+  sentAt         DateTime      @default(now())
+}
+
+model PaymentTransaction {
+  id           String        @id @default(cuid())
+  serviceName  String
+  amount       Int
+  status       String        @default("PENDING")
+  provider     String        @default("DEMO")
+  referenceCode String       @unique
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorRole  String
+  action     String
+  entityType String
+  entityId   String
+  details    String?
+  createdAt  DateTime @default(now())
+}
