@@ -3,7 +3,7 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNaviga
 import {
   Activity, Archive, ArrowLeft, ArrowRight, BookOpenCheck, Check, CheckCheck, ChevronDown, CircleHelp, Copy,
   ClipboardList, CloudUpload, CreditCard, Database, FileQuestion, GraduationCap, Image, LayoutDashboard,
-  ListChecks, Menu, Pencil, Plus, Search, Send, Settings2, ShieldCheck, Sparkles, X,
+  ListChecks, Pencil, Plus, Search, Send, Settings2, ShieldCheck, Sparkles, X,
 } from 'lucide-react'
 import { api, json } from './api'
 import './App.css'
@@ -22,24 +22,36 @@ type Result = { id: string; studentDisplayName: string; score: number; totalQues
 type ResultDetail = Result & { answers: { id: string; selectedOptionId?: string | null; isCorrect: boolean; question: { questionText: string; options: Option[] } }[] }
 type Distribution = { id: string; recipientType: string; channel: string; recipientLabel: string; status: string; createdAt: string; attempt: { package: { title: string } } }
 type Payment = { id: string; serviceName: string; amount: number; referenceCode: string; status: string }
-type AuditEvent = { id: string; action: string; entityType: string; actorRole: string; createdAt: string }
-type DashboardSummary = { total: number; draft: number; review: number; validated: number; rejected: number; mediaNeeded: number; packages: number; attempts: number; recent: AuditEvent[] }
+type AuditEvent = { id: string; action: string; entityType: string; entityId: string; actorRole: string; details?: string | null; createdAt: string }
+type DashboardSummary = { total: number; draft: number; review: number; validated: number; rejected: number; mediaNeeded: number; packages: number; readyPackages: number; attempts: number; recent: AuditEvent[] }
 type IconComponent = typeof LayoutDashboard
 
 const navigation: { label: string; to: string; icon: IconComponent; section: string }[] = [
-  { label: 'Ringkasan', to: '/', icon: LayoutDashboard, section: 'WORKSPACE' },
+  { label: 'Dashboard', to: '/', icon: LayoutDashboard, section: 'WORKSPACE' },
+  { label: 'Buat soal', to: '/generator', icon: Sparkles, section: 'WORKSPACE' },
   { label: 'Bank soal', to: '/questions', icon: FileQuestion, section: 'WORKSPACE' },
-  { label: 'Buat dengan AI', to: '/generator', icon: Sparkles, section: 'WORKSPACE' },
-  { label: 'Review soal', to: '/review', icon: ShieldCheck, section: 'WORKSPACE' },
-  { label: 'Media belajar', to: '/media', icon: Image, section: 'CONTENT' },
+  { label: 'Repositori media', to: '/media', icon: Image, section: 'CONTENT' },
   { label: 'Paket soal', to: '/packages', icon: ClipboardList, section: 'CONTENT' },
-  { label: 'Kuis siswa', to: '/quiz', icon: GraduationCap, section: 'LEARNING' },
-  { label: 'Hasil belajar', to: '/results', icon: ListChecks, section: 'LEARNING' },
-  { label: 'Distribusi hasil', to: '/distribution', icon: Send, section: 'LEARNING' },
-  { label: 'Pembayaran demo', to: '/payments', icon: CreditCard, section: 'SYSTEM' },
-  { label: 'Data master', to: '/master', icon: Database, section: 'SYSTEM' },
-  { label: 'Tentang demo', to: '/settings', icon: Settings2, section: 'SYSTEM' },
+  { label: 'Hasil & distribusi', to: '/results', icon: ListChecks, section: 'LEARNING' },
+  { label: 'Konfirmasi pembayaran', to: '/payments', icon: CreditCard, section: 'SYSTEM' },
+  { label: 'Log aktivitas', to: '/logs', icon: Activity, section: 'SYSTEM' },
 ]
+
+const screenMetadata: Record<string, { screen: string; useCases: string[]; requirements: string[]; phase?: string }> = {
+  '/': { screen: 'S-01', useCases: ['UC-04', 'UC-05'], requirements: ['FR-01'] },
+  '/generator': { screen: 'S-02', useCases: ['UC-01', 'UC-02', 'UC-03'], requirements: ['FR-02', 'FR-03'] },
+  '/review': { screen: 'S-03', useCases: ['UC-04', 'UC-05', 'UC-06', 'UC-07'], requirements: ['FR-09'] },
+  '/questions': { screen: 'S-04', useCases: ['UC-03', 'UC-04'], requirements: ['FR-03', 'FR-04'] },
+  '/media': { screen: 'S-08', useCases: ['UC-09', 'UC-10', 'UC-11', 'UC-12'], requirements: ['FR-07', 'FR-08'] },
+  '/packages': { screen: 'S-09', useCases: ['UC-13'], requirements: ['FR-10', 'FR-11'] },
+  '/quiz': { screen: 'S-10', useCases: ['UC-14', 'UC-15'], requirements: ['FR-12', 'FR-13'] },
+  '/results': { screen: 'S-14', useCases: ['UC-16', 'UC-17', 'UC-18'], requirements: ['FR-14', 'FR-15'], phase: 'Fase lanjutan · integrasi disimulasikan' },
+  '/distribution': { screen: 'S-14', useCases: ['UC-16', 'UC-17', 'UC-18'], requirements: ['FR-14', 'FR-15'], phase: 'Fase lanjutan · integrasi disimulasikan' },
+  '/payments': { screen: 'S-21', useCases: ['UC-19', 'UC-20', 'UC-21'], requirements: ['FR-16'], phase: 'Fase lanjutan · integrasi disimulasikan' },
+  '/master': { screen: 'S-22', useCases: [], requirements: ['FR-17'] },
+  '/settings': { screen: 'S-23', useCases: [], requirements: ['FR-20'] },
+  '/logs': { screen: 'S-22', useCases: [], requirements: ['FR-19'] },
+}
 
 function App() {
   return <BrowserRouter><Workspace /></BrowserRouter>
@@ -47,46 +59,43 @@ function App() {
 
 function Workspace() {
   const [role, setRole] = useState(() => localStorage.getItem('antiremed-role') || 'TEACHER')
-  const [mobileMenu, setMobileMenu] = useState(false)
-  const roleLabel = role === 'ADMIN' ? 'Administrator' : role === 'STUDENT' ? 'Siswa demo' : 'Pengajar'
+  const [reviewCount, setReviewCount] = useState(0)
+  const [loggedIn, setLoggedIn] = useState(() => localStorage.getItem('antiremed-demo-session') === 'true')
+  const roleLabel = role === 'ADMIN' ? 'Administrator' : role === 'STUDENT' ? 'Siswa' : role === 'PARENT' ? 'Orang tua / pembayar' : 'Pengajar'
+  const roleName = role === 'ADMIN' ? 'Admin Demo' : role === 'STUDENT' ? 'Siswa Demo' : role === 'PARENT' ? 'Orang tua Demo' : 'Bu Rina'
   const { pathname } = useLocation()
+  const metadata = screenMetadata[pathname] || screenMetadata['/']
 
   useEffect(() => { localStorage.setItem('antiremed-role', role) }, [role])
+  useEffect(() => {
+    api<{ review: number }>('/api/dashboard/summary').then((summary) => setReviewCount(summary.review)).catch(() => undefined)
+  }, [pathname])
 
   return <div className="app-shell">
-    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
-      <div className="brand-lockup">
-        <div className="brand-mark"><BookOpenCheck size={20} strokeWidth={2.2} /></div>
-        <div><strong>antiremed</strong><span>ACADEMIC WORKSPACE</span></div>
-        <button className="icon-button mobile-close" aria-label="Tutup menu" onClick={() => setMobileMenu(false)}><X size={18} /></button>
-      </div>
-      <div className="workspace-tag"><span className="live-dot" /> DEMO LOKAL <span>v1.0</span></div>
-      <nav className="side-navigation" aria-label="Navigasi utama">
-        {['WORKSPACE', 'CONTENT', 'LEARNING', 'SYSTEM'].map((section) => <div className="nav-section" key={section}>
-          <div className="nav-caption">{section}</div>
-          {navigation.filter((item) => item.section === section).map(({ label, to, icon: Icon }) => <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            onClick={() => setMobileMenu(false)}
-            className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}>
-            <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
-          </NavLink>)}
-        </div>)}
-      </nav>
-      <div className="sidebar-bottom">
-        <div className="sidebar-note"><span className="note-icon"><ShieldCheck size={16} /></span><div><strong>Human review aktif</strong><small>AI tidak memublikasikan soal.</small></div></div>
-        <div className="user-mini"><div className="avatar">{role === 'ADMIN' ? 'AD' : role === 'STUDENT' ? 'SD' : 'RP'}</div><div className="user-mini-copy"><strong>{role === 'ADMIN' ? 'Admin Demo' : role === 'STUDENT' ? 'Siswa Demo' : 'Rani Pratama'}</strong><small>{roleLabel}</small></div></div>
-      </div>
-    </aside>
-
+    <header className="reference-header">
+      <NavLink className="reference-brand" to="/" aria-label="Antiremed Soal Studio, dashboard">
+        <span className="reference-mark">AR</span>
+        <span className="reference-brand-copy"><strong>Antiremed Soal Studio</strong><small>Prototipe AKPSI · data contoh</small></span>
+      </NavLink>
+      {loggedIn && <div className="reference-user">
+        <span className="reference-user-name">{roleLabel} · {roleName}</span>
+        <label className="role-picker reference-role-picker"><span>Ganti peran</span><select aria-label="Ganti peran" value={role} onChange={(event) => setRole(event.target.value)}><option value="TEACHER">Pengajar · Bu Rina</option><option value="STUDENT">Siswa demo</option><option value="PARENT">Orang tua / pembayar</option><option value="ADMIN">Admin demo</option></select><ChevronDown size={14} /></label>
+      </div>}
+      <NavLink className="simulation-link" to="/settings"><Activity size={15} /> Panel simulasi</NavLink>
+    </header>
+    {loggedIn && <nav className="reference-nav" aria-label="Navigasi">
+      {navigation.map(({ label, to }) => <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `reference-tab ${isActive ? 'reference-tab-active' : ''}`}>
+        <span>{label}</span>{to === '/questions' && reviewCount > 0 && <span className="reference-count">{reviewCount}</span>}
+      </NavLink>)}
+    </nav>}
     <main className="main-shell">
-      <header className="topbar">
-        <button className="icon-button mobile-menu-button" aria-label="Buka menu" onClick={() => setMobileMenu(true)}><Menu size={19} /></button>
-        <div className="breadcrumb"><span>Antiremed</span><span className="crumb-slash">/</span><strong>{navigation.find((item) => item.to === pathname)?.label || 'Ringkasan'}</strong></div>
-        <div className="topbar-actions"><div className="demo-status"><span className="live-dot" /> Semua layanan demo</div><label className="role-picker"><span>Peran</span><select aria-label="Pilih peran demo" value={role} onChange={(event) => setRole(event.target.value)}><option value="ADMIN">Admin</option><option value="TEACHER">Pengajar</option><option value="STUDENT">Siswa</option></select><ChevronDown size={13} /></label><div className="top-avatar">{role === 'ADMIN' ? 'AD' : role === 'STUDENT' ? 'SD' : 'RP'}</div></div>
-      </header>
-      <div className="page-container">
+      {loggedIn ? <div className="page-container">
+        <div className="screen-metadata">
+          <span className="screen-code">{metadata.screen}</span>
+          {metadata.useCases.map((useCase) => <span className="metadata-chip" key={useCase}>{useCase}</span>)}
+          {metadata.requirements.map((requirement) => <span className="metadata-chip" key={requirement}>{requirement}</span>)}
+          {metadata.phase && <span className="phase-chip">{metadata.phase}</span>}
+        </div>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/questions" element={<QuestionsPage />} />
@@ -99,13 +108,63 @@ function Workspace() {
           <Route path="/distribution" element={<DistributionPage />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/master" element={<MasterPage />} />
+          <Route path="/logs" element={<ActivityLogPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        <footer className="page-footer"><span>ANTIREMED · PROTOTIPE AKADEMIK</span><span>Semua layanan eksternal berjalan dalam mode simulasi.</span></footer>
-      </div>
+        <footer className="page-footer"><span>ANTIREMED SOAL STUDIO · PROTOTIPE AKPSI</span><span>Integrasi eksternal disimulasikan · Human review aktif</span></footer>
+      </div> : <div className="login-container"><LoginPage role={role} onRoleChange={setRole} onLogin={() => { localStorage.setItem('antiremed-demo-session', 'true'); setLoggedIn(true) }} /></div>}
     </main>
   </div>
+}
+
+function LoginPage({ role, onRoleChange, onLogin }: { role: string; onRoleChange: (role: string) => void; onLogin: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('demo1234')
+  const [error, setError] = useState('')
+  const accountEmail = role === 'STUDENT' ? 'dimas@antiremed.id' : role === 'PARENT' ? 'orangtua@antiremed.id' : 'rina@antiremed.id'
+
+  useEffect(() => { setEmail(accountEmail) }, [accountEmail])
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!email.trim() || !password.trim()) {
+      setError('Email dan kata sandi wajib diisi.')
+      return
+    }
+    setError('')
+    onLogin()
+  }
+
+  const roles = [
+    { value: 'TEACHER', title: 'Pengajar', detail: 'Membuat, meninjau, dan memaketkan soal' },
+    { value: 'STUDENT', title: 'Siswa', detail: 'Mengerjakan paket di aplikasi kuis' },
+    { value: 'PARENT', title: 'Orang tua / pembayar', detail: 'Menerima hasil dan melihat transaksi' },
+  ]
+
+  return <section className="login-page">
+    <div className="login-intro">
+      <span className="login-screen-code">S-00 · DEMO ACCESS</span>
+      <h1>Masuk ke Antiremed Soal Studio</h1>
+      <p>Prototipe tugas AKPSI. Semua data adalah contoh; integrasi AI, penyimpanan, aplikasi kuis, WhatsApp, dan pembayaran disimulasikan.</p>
+    </div>
+    <div className="role-cards" role="radiogroup" aria-label="Peran demo">
+      {roles.map((item) => <label className={`role-card ${role === item.value ? 'role-card-selected' : ''}`} key={item.value}>
+        <input type="radio" name="demo-role" value={item.value} checked={role === item.value} onChange={() => onRoleChange(item.value)} />
+        <strong>{item.title}</strong><span>{item.detail}</span>
+      </label>)}
+    </div>
+    <form className="login-form" onSubmit={submit}>
+      <div className="login-fields">
+        <label className="field">Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+        <label className="field">Kata sandi<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+      </div>
+      <p className="login-hint">Akun contoh terisi otomatis. Kosongkan field untuk melihat validasi.</p>
+      <ErrorLine message={error} />
+      <button className="button button-primary login-submit" type="submit">Masuk <ArrowRight size={16} /></button>
+    </form>
+    <p className="login-disclaimer"><ShieldCheck size={14} /> Autentikasi lokal untuk demonstrasi. Tidak ada akun eksternal yang digunakan.</p>
+  </section>
 }
 
 function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: React.ReactNode }) {
@@ -135,37 +194,33 @@ function useMasters() {
 
 function Dashboard() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
+  const [queue, setQueue] = useState<Question[]>([])
   const [error, setError] = useState('')
-  useEffect(() => { api<DashboardSummary>('/api/dashboard/summary').then(setSummary).catch((reason: Error) => setError(reason.message)) }, [])
-  const stats = summary ? [
-    ['Total soal', summary.total, 'akumulasi bank soal', 'stat-ink'],
-    ['Draft', summary.draft, 'belum diajukan untuk review', 'stat-ink'],
-    ['Menunggu review', summary.review, 'perlu validasi pengajar', 'stat-amber'],
-    ['Tervalidasi', summary.validated, 'siap digunakan', 'stat-green'],
-    ['Ditolak', summary.rejected, 'perlu revisi sebelum digunakan', 'stat-coral'],
-    ['Perlu media', summary.mediaNeeded, 'visual belum terhubung', 'stat-coral'],
+  useEffect(() => {
+    Promise.all([api<DashboardSummary>('/api/dashboard/summary'), api<Question[]>('/api/questions?status=NEEDS_REVIEW')])
+      .then(([nextSummary, nextQueue]) => { setSummary(nextSummary); setQueue(nextQueue.slice(0, 4)) })
+      .catch((reason: Error) => setError(reason.message))
+  }, [])
+  const stats: [string, number, string, string, string][] = summary ? [
+    ['Menunggu peninjauan', summary.review, 'perlu diperiksa pengajar', 'stat-amber', '/review'],
+    ['Perlu revisi', summary.rejected, 'perlu diperbarui', 'stat-coral', '/questions'],
+    ['Kebutuhan media belum terpenuhi', summary.mediaNeeded, 'perlu media aktif', 'stat-blue', '/media'],
+    ['Paket siap digunakan', summary.readyPackages, 'tersedia untuk siswa', 'stat-green', '/packages'],
   ] : []
   return <>
-    <PageHeading eyebrow={`${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase()} · WORKSPACE PENGAJAR`} title={`Selamat ${new Date().getHours() < 11 ? 'pagi' : new Date().getHours() < 15 ? 'siang' : 'sore'}, Rani`} description="Pantau proses penyusunan soal dan aktivitas belajar hari ini." action={<NavLink className="button button-primary" to="/generator"><Sparkles size={16} /> Buat soal</NavLink>} />
+    <PageHeading eyebrow={`${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase()} · S-01`} title={`Selamat ${new Date().getHours() < 11 ? 'pagi' : new Date().getHours() < 15 ? 'siang' : 'sore'}, Bu Rina`} description="Ringkasan bank soal hari ini." action={<NavLink className="button button-primary" to="/generator"><Sparkles size={16} /> Buat soal dengan AI</NavLink>} />
     <ErrorLine message={error} />
-    <div className="demo-banner"><div className="banner-orbit"><Sparkles size={20} /></div><div><strong>Mode demo akademik aktif</strong><p>Generator, pencarian media, distribusi, dan pembayaran menggunakan provider simulasi lokal.</p></div><span className="banner-label">OFFLINE READY</span></div>
-    <div className="stats-grid">{stats.length ? stats.map(([label, value, note, tone]) => <div className={`stat-card ${tone}`} key={String(label)}><div className="stat-top"><span>{label}</span><Activity size={15} /></div><strong>{value}</strong><small>{note}</small></div>) : [1, 2, 3, 4].map((item) => <div className="stat-card skeleton" key={item} />)}</div>
+    <div className="stats-grid">{stats.length ? stats.map(([label, value, note, tone, to]) => <NavLink className={`stat-card stat-link ${tone}`} key={label} to={to}><strong>{value}</strong><span>{label}</span><small>{note}</small></NavLink>) : [1, 2, 3, 4].map((item) => <div className="stat-card skeleton" key={item} />)}</div>
     <div className="dashboard-grid">
-      <section className="panel process-panel"><div className="section-heading"><div><span className="eyebrow">ALUR KERJA</span><h2>Progres konten</h2></div><span className="muted-caption">Data tersimpan</span></div>
-        <div className="process-list">
-          <div className="process-row"><span className="process-icon process-purple"><Sparkles size={17} /></span><div><strong>Perlu ditinjau</strong><small>Soal menunggu validasi pengajar</small></div><b>{summary?.review ?? '—'}</b></div>
-          <div className="process-row"><span className="process-icon process-green"><CheckCheck size={17} /></span><div><strong>Siap masuk paket</strong><small>Soal tervalidasi</small></div><b>{summary?.validated ?? '—'}</b></div>
-          <div className="process-row"><span className="process-icon process-coral"><Image size={17} /></span><div><strong>Perlu media</strong><small>Butuh kandidat visual</small></div><b>{summary?.mediaNeeded ?? '—'}</b></div>
-        </div>
-        <div className="process-footer"><span>{summary?.packages ?? 0} paket · {summary?.attempts ?? 0} pengerjaan</span><NavLink to="/review">Buka review <ArrowRight size={14} /></NavLink></div>
+      <section className="panel queue-panel">
+        <div className="section-heading"><div><span className="eyebrow">WORK QUEUE</span><h2>Antrean peninjauan</h2></div><NavLink to="/review" className="text-link">Lihat semua <ArrowRight size={14} /></NavLink></div>
+        {queue.length ? <div className="review-queue">{queue.map((question) => <article className="review-queue-row" key={question.id}><div className="review-queue-copy"><strong>{question.questionText}</strong><span>{question.subject.name} · {question.topic.name}</span></div><div className="review-queue-state"><StatusBadge status={question.status} /><NavLink className="button button-small" to="/review">Tinjau</NavLink></div></article>)}</div> : <div className="empty-state"><strong>Antrean kosong</strong><p>Soal yang perlu ditinjau akan muncul di sini.</p></div>}
       </section>
-      <section className="panel quick-panel"><div className="section-heading"><div><span className="eyebrow">AKSES CEPAT</span><h2>Lanjutkan pekerjaan</h2></div></div>
-        <div className="quick-links"><NavLink to="/generator"><span className="quick-icon quick-purple"><Sparkles size={18} /></span><span><strong>Generate soal</strong><small>Susun soal dari parameter belajar</small></span><ArrowRight size={16} /></NavLink><NavLink to="/packages"><span className="quick-icon quick-blue"><ClipboardList size={18} /></span><span><strong>Bangun paket</strong><small>Pilih soal tervalidasi</small></span><ArrowRight size={16} /></NavLink><NavLink to="/quiz"><span className="quick-icon quick-yellow"><GraduationCap size={18} /></span><span><strong>Coba kuis siswa</strong><small>Jalankan paket demo yang siap</small></span><ArrowRight size={16} /></NavLink></div>
+      <section className="panel activity-panel"><div className="section-heading"><div><span className="eyebrow">SYSTEM LOG</span><h2>Aktivitas sistem terbaru</h2></div><NavLink to="/settings" className="text-link">Buka log <ArrowRight size={14} /></NavLink></div>
+        {summary?.recent?.length ? <div className="activity-list">{summary.recent.map((item) => <div className="activity-row" key={item.id}><span className="activity-mark"><Activity size={15} /></span><div><strong>{item.action.replace(/_/g, ' ').toLowerCase()}</strong><small>{item.entityType} · {item.actorRole}</small></div><time>{new Date(item.createdAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</time></div>)}</div> : <div className="empty-state"><span className="empty-icon"><Activity size={20} /></span><strong>Belum ada aktivitas</strong><p>Aktivitas pengajar akan muncul di sini.</p></div>}
       </section>
     </div>
-    <section className="panel activity-panel"><div className="section-heading"><div><span className="eyebrow">AUDIT TRAIL</span><h2>Aktivitas terbaru</h2></div><span className="muted-caption">Tindakan penting</span></div>
-      {summary?.recent?.length ? <div className="activity-list">{summary.recent.map((item) => <div className="activity-row" key={item.id}><span className="activity-mark"><Activity size={15} /></span><div><strong>{item.action.replace(/_/g, ' ').toLowerCase()}</strong><small>{item.entityType} · {item.actorRole}</small></div><time>{new Date(item.createdAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</time></div>)}</div> : <div className="empty-state"><span className="empty-icon"><Activity size={20} /></span><strong>Belum ada aktivitas</strong><p>Aktivitas pengajar akan muncul di sini.</p></div>}
-    </section>
+    <div className="dashboard-data-note">{summary?.total ?? '—'} total soal <span>·</span> {summary?.draft ?? '—'} draf <span>·</span> {summary?.validated ?? '—'} tervalidasi <span>·</span> {summary?.packages ?? '—'} paket <span>·</span> {summary?.attempts ?? '—'} pengerjaan</div>
   </>
 }
 
@@ -174,7 +229,7 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`status-badge status-${status.toLowerCase()}`}><i />{labels[status] || status}</span>
 }
 
-function QuestionsPage({ reviewOnly = false }: { reviewOnly?: boolean }) {
+      function QuestionsPage({ reviewOnly = false }: { reviewOnly?: boolean }) {
   const [rows, setRows] = useState<Question[]>([])
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState(reviewOnly ? 'NEEDS_REVIEW' : '')
@@ -194,7 +249,7 @@ function QuestionsPage({ reviewOnly = false }: { reviewOnly?: boolean }) {
     if (status) query.set('status', status)
     if (subjectId) query.set('subjectId', subjectId)
     if (levelId) query.set('educationLevelId', levelId)
-    if (topicId) query.set('topicId', topicId)
+      if (topicId) query.set('topicId', topicId)
     if (mediaNeed) query.set('mediaNeed', mediaNeed)
     api<Question[]>(`/api/questions?${query}`).then(setRows).catch((reason: Error) => setError(reason.message))
   }, [search, status, subjectId, levelId, topicId, mediaNeed, refresh])
@@ -220,7 +275,7 @@ function QuestionsPage({ reviewOnly = false }: { reviewOnly?: boolean }) {
   }
 
   return <>
-    <PageHeading eyebrow={isReview ? 'HUMAN-IN-THE-LOOP' : 'REPOSITORY KONTEN'} title={isReview ? 'Review soal' : 'Bank soal'} description={isReview ? 'Periksa konten dan media sebelum soal dapat digunakan.' : 'Cari, filter, dan kelola seluruh soal dalam satu repositori.'} action={!isReview && <NavLink className="button button-primary" to="/generator"><Plus size={16} /> Tambah soal</NavLink>} />
+    <PageHeading eyebrow={isReview ? 'HUMAN-IN-THE-LOOP' : 'REPOSITORY KONTEN'} title={isReview ? 'Review soal' : 'Bank soal'} description={isReview ? 'Periksa konten dan media sebelum soal dapat digunakan.' : 'Cari, filter, dan kelola seluruh soal dalam satu repositori.'} action={!isReview && <div className="heading-actions"><NavLink className="button" to="/review"><ShieldCheck size={15} /> Review queue</NavLink><NavLink className="button button-primary" to="/generator"><Plus size={16} /> Buat soal</NavLink></div>} />
     <ErrorLine message={error} />
     {isReview && <Notice tone="warning">AI hanya membantu menyusun konten. Soal tidak akan dipublikasikan sebelum diperiksa dan diterima pengajar.</Notice>}
     <section className="panel table-panel">
@@ -435,7 +490,7 @@ function PackagesPage() {
   }
 
   return <>
-    <PageHeading eyebrow="ASSESSMENT DESIGN" title="Paket soal" description="Susun paket hanya dari soal yang telah divalidasi pengajar." />
+    <PageHeading eyebrow="ASSESSMENT DESIGN" title="Paket soal" description="Susun paket hanya dari soal yang telah divalidasi pengajar." action={<NavLink className="button button-primary" to="/quiz"><GraduationCap size={15} /> Buka kuis siswa</NavLink>} />
     <ErrorLine message={error} />
     <div className="packages-layout"><section className="panel package-builder"><div className="section-heading"><div><span className="eyebrow">PACKAGE BUILDER</span><h2>{editingPackage ? 'Ubah paket' : 'Buat paket'}</h2></div><ClipboardList size={19} /></div><form onSubmit={createPackage}><label className="field">Nama paket<input required minLength={3} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Contoh: Latihan Bab 1" /></label><div className="form-grid"><label className="field">Jenis paket<select value={packageType} onChange={(event) => setPackageType(event.target.value)}>{packageTypes.map((type) => <option value={type.code} key={type.id}>{type.name}</option>)}</select></label><label className="field">Jenjang<select value={levelId} onChange={(event) => setLevelId(event.target.value)}>{levels.map((level) => <option value={level.id} key={level.id}>{level.name}</option>)}</select></label><label className="field">Kelas<input required value={grade} onChange={(event) => setGrade(event.target.value)} /></label><label className="field">Mata pelajaran<select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label></div><div className="question-picker"><div className="picker-heading"><strong>Pilih soal tervalidasi</strong><span>{selectedIds.length} dipilih</span></div>{questions.map((question) => <label className="picker-row" key={question.id}><input type="checkbox" checked={selectedIds.includes(question.id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, question.id] : current.filter((id) => id !== question.id))} /><span><strong>{question.questionText}</strong><small>{question.subject.name} · {question.educationLevel.name} · {question.mediaNeed === 'REQUIRED' ? 'perlu media' : 'media tidak diperlukan'}</small></span></label>)}{!questions.length && <div className="subtle-empty">Belum ada soal tervalidasi yang tersedia.</div>}</div><button className="button button-primary full-button" type="submit" disabled={!levelId || !subjectId}><Plus size={15} /> {editingPackage ? 'Simpan perubahan' : 'Simpan draft paket'}</button>{editingPackage && <button type="button" className="button full-button" onClick={() => { setEditingPackage(null); setTitle(''); setSelectedIds([]) }}>Batal ubah paket</button>}</form></section><section className="package-list-panel"><div className="section-heading"><div><span className="eyebrow">YOUR LIBRARY</span><h2>Paket tersimpan <span className="count-pill">{packages.length}</span></h2></div></div>{packages.map((item) => <article className="package-row" key={item.id}><div className="package-cover"><BookOpenCheck size={19} /><span>{item.questions.length.toString().padStart(2, '0')} SOAL</span></div><div className="package-copy"><div className="package-title-line"><strong>{item.title}</strong><StatusBadge status={item.status} /></div><small>{item.subject.name} · Kelas {item.grade} · {item.packageType.replace('_', ' ')}</small><div className="package-row-actions">{item.status !== 'ARCHIVED' && <button className="button button-small" onClick={() => editPackage(item)}><Pencil size={13} /> Ubah</button>}{item.status === 'DRAFT' && <button className="button button-small" onClick={() => markReady(item.id)}><Check size={13} /> Tandai siap</button>}<button className="button button-small" onClick={() => window.open(`/api/packages/${item.id}/export?format=json`, '_blank')}><ArrowRight size={13} /> Ekspor JSON</button>{item.status !== 'ARCHIVED' && <button className="icon-button reject-button" aria-label="Arsipkan paket" title="Arsipkan paket" onClick={() => archivePackage(item)}><Archive size={14} /></button>}</div></div></article>)}{!packages.length && <div className="empty-state"><strong>Belum ada paket</strong><p>Paket yang disimpan muncul di sini.</p></div>}<Notice tone="warning">Paket siap hanya jika seluruh soal tervalidasi dan kebutuhan media terpenuhi atau dikecualikan dengan alasan.</Notice></section></div>
   </>
@@ -488,7 +543,7 @@ function ResultsPage() {
   useEffect(() => { api<Result[]>('/api/results').then(setResults).catch((reason: Error) => setError(reason.message)) }, [])
   async function viewResult(id: string) { try { setSelected(await api<ResultDetail>(`/api/results/${id}`)) } catch (reason) { setError((reason as Error).message) } }
   return <>
-    <PageHeading eyebrow="LEARNING ANALYTICS" title="Hasil pembelajaran" description="Ringkasan pengerjaan kuis dan capaian siswa demo." />
+    <PageHeading eyebrow="LEARNING ANALYTICS" title="Hasil dan distribusi" description="Ringkasan pengerjaan kuis dan capaian siswa demo." action={<NavLink className="button button-primary" to="/distribution"><Send size={15} /> Distribusi hasil</NavLink>} />
     <ErrorLine message={error} />
     <section className="panel table-panel"><div className="table-toolbar"><div><strong>Riwayat pengerjaan</strong><span className="muted-caption"> · {results.length} hasil tersimpan</span></div><span className="muted-caption">Skor dihitung oleh server</span></div><div className="table-scroll"><table><thead><tr><th>SISWA</th><th>PAKET SOAL</th><th>TANGGAL</th><th>SKOR</th><th>RINGKASAN</th><th></th></tr></thead><tbody>{results.map((item) => <tr key={item.id}><td><strong>{item.studentDisplayName}</strong></td><td>{item.package.title}</td><td>{new Date(item.submittedAt).toLocaleDateString('id-ID')}</td><td><span className="score-value">{item.score}<small> / 100</small></span></td><td>{item.correctCount} benar · {item.wrongCount} salah</td><td><button className="button button-small" onClick={() => viewResult(item.id)}>Lihat detail</button></td></tr>)}</tbody></table></div>{!results.length && <div className="empty-state"><strong>Belum ada hasil kuis</strong><p>Hasil pengerjaan siswa akan tercatat di sini.</p></div>}</section>
     {selected && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}><div className="modal result-modal" role="dialog" aria-modal="true"><div className="modal-heading"><div><span className="eyebrow">LEARNING SUMMARY</span><h2>{selected.studentDisplayName}</h2></div><button className="icon-button" aria-label="Tutup" onClick={() => setSelected(null)}><X size={18} /></button></div><div className="result-detail-header"><strong>{selected.package.title}</strong><span className="score-value">{selected.score} / 100</span></div>{selected.answers.map((answer, index) => { const right = answer.question.options.find((option) => option.isCorrect); const chosen = answer.question.options.find((option) => option.id === answer.selectedOptionId); return <div className="result-answer" key={answer.id}><span className={answer.isCorrect ? 'answer-check' : 'answer-cross'}>{answer.isCorrect ? <Check size={14} /> : <X size={14} />}</span><div><small>SOAL {index + 1}</small><p>{answer.question.questionText}</p><span>Jawaban siswa: {chosen?.label || 'Tidak dijawab'} · Kunci: {right?.label}</span></div></div> })}</div></div>}
@@ -653,6 +708,29 @@ function MasterPage() {
   </>
 }
 
+function ActivityLogPage() {
+  const [records, setRecords] = useState<AuditEvent[]>([])
+  const [search, setSearch] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => {
+    const query = new URLSearchParams()
+    if (search.trim()) query.set('search', search.trim())
+    api<AuditEvent[]>(`/api/audit-logs?${query}`).then(setRecords).catch((reason: Error) => setError(reason.message))
+  }, [search])
+
+  return <>
+    <PageHeading eyebrow="SYSTEM AUDIT · S-22" title="Log aktivitas" description="Riwayat tindakan penting yang tercatat di database demo." action={<NavLink className="button" to="/settings"><Settings2 size={15} /> Panel simulasi</NavLink>} />
+    <ErrorLine message={error} />
+    <section className="panel table-panel">
+      <div className="table-toolbar"><div className="search-field"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari aksi, entitas, atau ID..." aria-label="Cari log aktivitas" /></div><span className="muted-caption">{records.length} aktivitas terbaru · maksimal 100</span></div>
+      <div className="table-scroll"><table><thead><tr><th>WAKTU</th><th>AKSI</th><th>ENTITAS</th><th>PELAKU</th><th>DETAIL</th></tr></thead><tbody>
+        {records.map((record) => <tr key={record.id}><td>{new Date(record.createdAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</td><td><strong>{record.action.replace(/_/g, ' ')}</strong></td><td>{record.entityType} · {record.entityId.slice(-8)}</td><td>{record.actorRole}</td><td>{record.details || '—'}</td></tr>)}
+      </tbody></table></div>
+      {!records.length && <div className="empty-state"><span className="empty-icon"><Activity size={20} /></span><strong>{error ? 'Log tidak dapat dimuat' : 'Belum ada aktivitas'}</strong><p>{error || 'Aktivitas sistem akan tercatat di sini.'}</p></div>}
+    </section>
+  </>
+}
+
 function SettingsPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -662,7 +740,7 @@ function SettingsPage() {
     catch (reason) { setError((reason as Error).message) }
   }
   return <>
-    <PageHeading eyebrow="PROTOTYPE INFORMATION" title="Tentang demo" description="Status layanan, batas simulasi, dan pengelolaan data lokal." />
+    <PageHeading eyebrow="SYSTEM LOG · SIMULATION PANEL" title="Log aktivitas dan simulasi" description="Tindakan sistem terakhir, status layanan demo, dan pengelolaan data lokal." action={<NavLink className="button" to="/master"><Database size={15} /> Data master</NavLink>} />
     <ErrorLine message={error} />{message && <div className="success-line"><Check size={15} />{message}<button className="icon-button" aria-label="Tutup" onClick={() => setMessage('')}><X size={14} /></button></div>}
     <div className="settings-grid"><section className="panel settings-panel"><div className="section-heading"><div><span className="eyebrow">RUNTIME</span><h2>Konfigurasi prototype</h2></div><Settings2 size={18} /></div><div className="settings-row"><span>Status demo</span><strong><span className="live-dot" /> Aktif</strong></div><div className="settings-row"><span>Database</span><strong>SQLite lokal · Prisma</strong></div><div className="settings-row"><span>Provider AI soal / media</span><strong>Simulasi deterministik</strong></div><div className="settings-row"><span>Pesan / pembayaran</span><strong>Adapter simulasi lokal</strong></div><div className="settings-row"><span>Frontend / backend</span><strong>React · Express · TypeScript</strong></div><div className="settings-row"><span>Versi prototype</span><strong>1.0.0 · Academic working prototype</strong></div></section><section className="panel reset-panel"><span className="reset-icon"><Archive size={19} /></span><span className="eyebrow">DATA MANAGEMENT</span><h2>Pulihkan data demo</h2><p>Seed awal akan menggantikan data lokal saat ini. File unggahan di folder uploads tidak dihapus.</p><button className="button button-danger" onClick={reset}><Archive size={15} /> Reset data demo</button></section></div>
     <section className="panel architecture-panel"><div className="section-heading"><div><span className="eyebrow">DEPLOYMENT VIEW</span><h2>Arsitektur lokal</h2></div></div><div className="architecture-flow"><span>Browser<br /><small>React + Vite</small></span><ArrowRight size={18} /><span>REST API<br /><small>Express :4000</small></span><ArrowRight size={18} /><span>Prisma ORM<br /><small>SQLite + uploads/</small></span></div><div className="architecture-adapters"><span>Demo AI</span><span>Demo media</span><span>Demo messaging</span><span>Demo payment</span></div></section>

@@ -83,7 +83,7 @@ app.get('/api/demo/status', (_request, response) => response.json({ demoMode: tr
 
 app.get('/api/dashboard/summary', async (_request, response, next) => {
   try {
-    const [total, draft, review, validated, rejected, mediaNeeded, packages, attempts, recent] = await Promise.all([
+    const [total, draft, review, validated, rejected, mediaNeeded, packages, readyPackages, attempts, recent] = await Promise.all([
       prisma.question.count({ where: { status: { not: 'ARCHIVED' } } }),
       prisma.question.count({ where: { status: 'DRAFT' } }),
       prisma.question.count({ where: { status: 'NEEDS_REVIEW' } }),
@@ -91,10 +91,28 @@ app.get('/api/dashboard/summary', async (_request, response, next) => {
       prisma.question.count({ where: { status: 'REJECTED' } }),
       prisma.question.count({ where: { mediaNeed: 'REQUIRED' } }),
       prisma.questionPackage.count({ where: { status: { not: 'ARCHIVED' } } }),
+      prisma.questionPackage.count({ where: { status: 'READY' } }),
       prisma.quizAttempt.count(),
       prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 6 }),
     ])
-    response.json({ total, draft, review, validated, rejected, mediaNeeded, packages, attempts, recent })
+    response.json({ total, draft, review, validated, rejected, mediaNeeded, packages, readyPackages, attempts, recent })
+  } catch (error) { next(error) }
+})
+
+app.get('/api/audit-logs', async (request, response, next) => {
+  try {
+    const search = String(request.query.search || '')
+    const records = await prisma.auditLog.findMany({
+      where: search ? { OR: [
+        { action: { contains: search } },
+        { entityType: { contains: search } },
+        { entityId: { contains: search } },
+        { details: { contains: search } },
+      ] } : undefined,
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
+    response.json(records)
   } catch (error) { next(error) }
 })
 

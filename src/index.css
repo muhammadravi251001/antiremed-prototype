@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 :root {
-  font-family: 'Trebuchet MS', 'Aptos', sans-serif;
-  color: #202923;
-  background: #f4f5f0;
+  font-family: 'Aptos', 'Segoe UI Variable', 'Segoe UI', sans-serif;
+  color: #e8eee8;
+  background: #0c1511;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
