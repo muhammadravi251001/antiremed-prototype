@@ -158,20 +158,25 @@ p {
   gap: 10px;
   font-weight: 800;
   letter-spacing: -.01em;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
   text-decoration: none;
   color: var(--fg);
 }
 
 .brand .mk {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   background: var(--accent);
   color: var(--accent-ink);
   display: grid;
   place-items: center;
-  font-size: .8rem;
-  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 800;
 }
 
 .brand small {
@@ -997,6 +1002,233 @@ td.num {
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0 5px;
+}
+
+.env {
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--mark);
+  background: var(--mark-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: .8rem;
+}
+
+.user .who {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.user .who b {
+  font-size: .84rem;
+}
+
+.user .who span {
+  font-size: .74rem;
+  color: var(--muted);
+}
+
+.lp {
+  display: flex;
+  flex-direction: column;
+  gap: 56px;
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.lp-nav {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lp-nav a {
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: .9rem;
+}
+
+.lp-nav a:hover {
+  color: var(--accent);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 32px;
+  align-items: center;
+  padding-top: 24px;
+}
+
+.hero h1 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -.02em;
+}
+
+.hero .lead {
+  font-size: 1.06rem;
+  color: var(--muted);
+  max-width: 52ch;
+}
+
+.eyebrow {
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.hero-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lp h2.sec {
+  font-size: clamp(1.25rem, 2.6vw, 1.6rem);
+  letter-spacing: -.01em;
+}
+
+.feat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.feat .ic {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  counter-reset: st;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.steps li {
+  list-style: none;
+  counter-increment: st;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.steps li::before {
+  content: counter(st);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--fg);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: .85rem;
+}
+
+.steps ol {
+  margin: 0;
+  padding: 0;
+}
+
+.lp-foot {
+  border-top: 1px solid var(--line);
+  padding: 20px 0 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: .84rem;
+}
+
+.acct {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.acct:hover {
+  background: var(--surface-2);
+}
+
+.acct .avatar {
+  flex: none;
+}
+
+.acct span {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.acct small {
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+  .user .who {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {

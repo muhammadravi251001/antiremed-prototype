@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { api, json } from './api'
 import {
   ActiveAttemptState,
@@ -40,50 +40,25 @@ import {
   SimulationSettings,
   SUBJECTS,
   TOPICS,
+  CAT,
+  USERS,
   wait,
   checkIssues,
 } from './data'
 import './App.css'
 
-/* ===================== Route Metadata ===================== */
-type RouteMeta = { screen: string; useCases: string[]; fr: string; later?: boolean }
-
-const SCREEN_META: Record<string, RouteMeta> = {
-  '/': { screen: 'S-01', useCases: [], fr: '' },
-  '/generator': { screen: 'S-02', useCases: ['UC-01'], fr: 'FR-01' },
-  '/pipeline': { screen: 'S-03', useCases: ['UC-01', 'UC-02', 'UC-03', 'UC-08'], fr: 'FR-01, FR-02, FR-03, FR-05' },
-  '/questions': { screen: 'S-04', useCases: ['UC-03', 'UC-04'], fr: 'FR-03, FR-04' },
-  '/review': { screen: 'S-05', useCases: ['UC-04', 'UC-05', 'UC-07', 'UC-02', 'UC-03', 'UC-08'], fr: 'FR-09' },
-  '/edit': { screen: 'S-06', useCases: ['UC-06'], fr: 'FR-09' },
-  '/media-workbench': { screen: 'S-07', useCases: ['UC-08', 'UC-09', 'UC-10', 'UC-11', 'UC-12'], fr: 'FR-05 s.d. FR-08' },
-  '/media': { screen: 'S-08', useCases: ['UC-10', 'UC-12'], fr: 'FR-07' },
-  '/packages': { screen: 'S-09', useCases: ['UC-13'], fr: 'FR-10' },
-  '/builder': { screen: 'S-10', useCases: ['UC-13'], fr: 'FR-10, FR-04' },
-  '/quiz': { screen: 'S-11', useCases: ['UC-14'], fr: 'FR-11' },
-  '/quiz-take': { screen: 'S-12', useCases: ['UC-14'], fr: 'FR-11' },
-  '/quiz-done': { screen: 'S-13', useCases: ['UC-14', 'UC-15'], fr: 'FR-11' },
-  '/results': { screen: 'S-14', useCases: ['UC-16', 'UC-17', 'UC-18'], fr: 'FR-12', later: true },
-  '/messages': { screen: 'S-15', useCases: ['UC-17', 'UC-18'], fr: 'FR-12', later: true },
-  '/catalog': { screen: 'S-16', useCases: ['UC-19'], fr: 'FR-13', later: true },
-  '/checkout': { screen: 'S-17', useCases: ['UC-19'], fr: 'FR-13', later: true },
-  '/qris': { screen: 'S-18', useCases: ['UC-19', 'UC-21'], fr: 'FR-13', later: true },
-  '/payments': { screen: 'S-21', useCases: ['UC-20', 'UC-21'], fr: 'FR-13', later: true },
-  '/logs': { screen: 'S-22', useCases: ['UC-02', 'UC-03', 'UC-08', 'UC-12', 'UC-15', 'UC-16', 'UC-21'], fr: 'NFR-04' },
-  '/master': { screen: 'S-22', useCases: [], fr: 'NFR-04' },
-}
-
 const ROLE_NAV: Record<Role, [string, [string, string, string?][]][]> = {
   teacher: [
-    ['Pembuatan soal', [['/', 'Dashboard'], ['/generator', 'Buat soal'], ['/questions', 'Bank soal', 'review'], ['/media', 'Repositori media']]],
-    ['Paket', [['/packages', 'Paket soal']]],
-    ['Fase lanjutan', [['/results', 'Hasil & distribusi'], ['/payments', 'Konfirmasi pembayaran']]],
-    ['Sistem', [['/logs', 'Log aktivitas'], ['/master', 'Data master']]],
+    ['', [['/', 'Beranda']]],
+    ['Konten', [['/generator', 'Buat soal'], ['/questions', 'Bank soal', 'review'], ['/media', 'Pustaka gambar']]],
+    ['Distribusi', [['/packages', 'Paket soal'], ['/results', 'Laporan belajar']]],
+    ['Administrasi', [['/payments', 'Transaksi'], ['/logs', 'Log aktivitas'], ['/master', 'Data master']]],
   ],
   student: [
-    ['Aplikasi kuis (simulasi)', [['/quiz', 'Kuis saya']]],
+    ['', [['/quiz', 'Kuis saya']]],
   ],
   payer: [
-    ['Fase lanjutan', [['/catalog', 'Katalog paket'], ['/messages', 'Pesan diterima']]],
+    ['', [['/catalog', 'Paket belajar'], ['/messages', 'Laporan belajar']]],
   ],
 }
 
@@ -126,7 +101,6 @@ function Workspace() {
   const [activeQuizAttempt, setActiveQuizAttempt] = useState<ActiveAttemptState | null>(null)
   const [activePipeline, setActivePipeline] = useState<PipelineState | null>(null)
 
-  const location = useLocation()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -153,20 +127,6 @@ function Workspace() {
   const waitingReviewCount = useMemo(() => {
     return data.questions.filter((q) => q.status === 'InReview' || q.status === 'RevisionRequired').length
   }, [data.questions])
-
-  // Get current metadata
-  const metaKey = location.pathname.startsWith('/questions/') && location.pathname.endsWith('/edit') ? '/edit'
-    : location.pathname.startsWith('/questions/') && location.pathname.endsWith('/media') ? '/media-workbench'
-    : location.pathname.startsWith('/questions/') ? '/review'
-    : location.pathname.startsWith('/packages/') ? '/builder'
-    : location.pathname.startsWith('/checkout') ? '/checkout'
-    : location.pathname.startsWith('/qris') ? '/qris'
-    : location.pathname.startsWith('/quiz-take') ? '/quiz-take'
-    : location.pathname.startsWith('/quiz-done') ? '/quiz-done'
-    : location.pathname.startsWith('/pipeline') ? '/pipeline'
-    : location.pathname
-
-  const meta = SCREEN_META[metaKey] || SCREEN_META['/']
 
   function handleLogout() {
     setRole(null)
@@ -236,33 +196,66 @@ function Workspace() {
       seq: nextSeq,
     }))
     addLog('UC-21', `${cf.id} untuk ${activePay.id}: ${cf.state}. ${cf.note}`)
-    showToast(`UC-21: ${state}`)
+    showToast(`${activePay.id}: ${state}`)
   }
 
-  const roleLabel = role === 'teacher' ? 'Pengajar · Bu Rina' : role === 'student' ? 'Siswa · Dimas Pratama' : 'Orang tua/pembayar · Ibu Sari'
+  const currentUser = useMemo(() => {
+    if (!role) return null
+    if (role === 'teacher') return USERS['rina.wulandari@antiremed.id']
+    if (role === 'student') return USERS['dimas.pratama@siswa.antiremed.id']
+    return USERS['sari.pratama@email.co.id']
+  }, [role])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'K' || e.key === 'k')) {
+        e.preventDefault()
+        setDrawerOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   return (
     <div>
       <header className="top">
-        <Link className="brand" to="/">
-          <div className="mk">AR</div>
+        <Link className="brand" to={role ? '/' : '/landing'}>
+          <div className="mk">A</div>
           <div>
-            Antiremed Soal Studio
-            <small>Prototipe AKPSI · data contoh</small>
+            Antiremed Studio
+            <small>Bimbel Antiremed</small>
           </div>
         </Link>
         <div className="sp" />
-        {role && (
+        {currentUser ? (
           <div className="rolepill">
-            <span>{roleLabel}</span>
-            <button className="btn sm ghost" onClick={handleLogout} type="button">
-              Ganti peran
+            <span className="env" title="Lingkungan staging: data dan transaksi tidak diproses oleh layanan produksi">
+              Staging
+            </span>
+            <div className="user">
+              <div className="avatar">
+                {currentUser.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}
+              </div>
+              <div className="who">
+                <b>{currentUser.name}</b>
+                <span>{currentUser.title}</span>
+              </div>
+            </div>
+            <button className="btn sm" onClick={handleLogout} type="button">
+              Keluar
             </button>
           </div>
+        ) : (
+          <nav className="lp-nav" aria-label="Halaman utama">
+            <a href="#fitur">Fitur</a>
+            <a href="#cara-kerja">Cara kerja</a>
+            <a href="#paket">Paket belajar</a>
+            <button className="btn primary sm" onClick={() => navigate('/login')} type="button">
+              Masuk
+            </button>
+          </nav>
         )}
-        <button className="btn sm" onClick={() => setDrawerOpen((o) => !o)} type="button" aria-controls="drawer">
-          Panel simulasi
-        </button>
       </header>
 
       <div className={`shell ${!role ? 'single-col' : ''}`}>
@@ -270,7 +263,7 @@ function Workspace() {
           <nav className="side" aria-label="Navigasi">
             {ROLE_NAV[role].map(([grp, items]) => (
               <React.Fragment key={grp}>
-                <div className="grp">{grp}</div>
+                {grp ? <div className="grp">{grp}</div> : null}
                 {items.map(([to, label, badge]) => (
                   <NavLink
                     key={to}
@@ -289,29 +282,19 @@ function Workspace() {
 
         <main>
           <div className="wrap">
-            {role && (
-              <div className="strip">
-                <span className="sid">{meta.screen}</span>
-                {meta.useCases.map((uc) => (
-                  <span className="tag" key={uc}>
-                    {uc}
-                  </span>
-                ))}
-                {meta.fr && <span className="tag">{meta.fr}</span>}
-                {meta.later && <span className="tag later">Fase lanjutan · integrasi disimulasikan</span>}
-              </div>
-            )}
-
             <Routes>
+              {/* Landing Page */}
+              <Route path="/landing" element={<LandingPage packages={data.packages} onLoginClick={() => navigate('/login')} />} />
+
               {/* S-00 Login */}
-              <Route path="/login" element={<LoginPage onSelectRole={(r) => { setRole(r); navigate(r === 'teacher' ? '/' : r === 'student' ? '/quiz' : '/catalog') }} />} />
+              <Route path="/login" element={<LoginPage onSelectRole={(r) => { setRole(r); navigate(r === 'teacher' ? '/' : r === 'student' ? '/quiz' : '/catalog') }} onBackToHome={() => navigate('/landing')} />} />
 
               {/* S-01 Dashboard */}
               <Route
                 path="/"
                 element={
                   !role ? (
-                    <Navigate to="/login" replace />
+                    <LandingPage packages={data.packages} onLoginClick={() => navigate('/login')} />
                   ) : role === 'student' ? (
                     <Navigate to="/quiz" replace />
                   ) : role === 'payer' ? (
@@ -493,101 +476,101 @@ function Workspace() {
         </main>
       </div>
 
-      {/* Drawer Panel Simulasi */}
-      <aside className="drawer" id="drawer" hidden={!drawerOpen}>
+      {/* Drawer Konsol Integrasi */}
+      <aside className="drawer" id="drawer" hidden={!drawerOpen} aria-label="Konsol integrasi">
         <h2>
-          Panel simulasi{' '}
+          Konsol integrasi{' '}
           <button className="btn sm" onClick={() => setDrawerOpen(false)} type="button">
             Tutup
           </button>
         </h2>
-        <p className="small muted">Atur respons layanan eksternal untuk mendemonstrasikan alur alternatif. Tidak ada layanan nyata yang dipanggil.</p>
+        <p className="small muted">Khusus lingkungan staging. Atur respons layanan pihak ketiga untuk pengujian.</p>
 
         <div className="sim">
-          <label htmlFor="sim-ai">Generative AI (UC-01)</label>
+          <label htmlFor="sim-ai">Layanan AI teks</label>
           <select id="sim-ai" value={sim.ai} onChange={(e) => setSim({ ...sim, ai: e.target.value as SimulationSettings['ai'] })}>
-            <option value="success">Berhasil</option>
-            <option value="fail">Gagal / timeout</option>
+            <option value="success">Normal</option>
+            <option value="fail">Tidak merespons</option>
           </select>
 
-          <label htmlFor="sim-explain">Penjelasan (UC-02)</label>
+          <label htmlFor="sim-explain">Pembahasan AI</label>
           <select id="sim-explain" value={sim.explain} onChange={(e) => setSim({ ...sim, explain: e.target.value as SimulationSettings['explain'] })}>
             <option value="complete">Lengkap</option>
             <option value="incomplete">Tidak lengkap</option>
           </select>
 
-          <label htmlFor="sim-detect">Deteksi media (UC-08)</label>
+          <label htmlFor="sim-detect">Deteksi gambar</label>
           <select id="sim-detect" value={sim.detect} onChange={(e) => setSim({ ...sim, detect: e.target.value as SimulationSettings['detect'] })}>
             <option value="auto">Sesuai isi soal</option>
-            <option value="Required">Selalu butuh</option>
-            <option value="NeedsCheck">Tidak meyakinkan</option>
+            <option value="Required">Selalu perlu</option>
+            <option value="NeedsCheck">Tidak yakin</option>
             <option value="NotRequired">Tidak perlu</option>
           </select>
 
-          <label htmlFor="sim-repo">Repositori (UC-10)</label>
+          <label htmlFor="sim-repo">Pustaka gambar</label>
           <select id="sim-repo" value={sim.repo} onChange={(e) => setSim({ ...sim, repo: e.target.value as SimulationSettings['repo'] })}>
-            <option value="found">Ada kandidat</option>
-            <option value="none">Tidak ada</option>
+            <option value="found">Ada hasil</option>
+            <option value="none">Kosong</option>
           </select>
 
-          <label htmlFor="sim-ext">Sumber media (UC-09)</label>
+          <label htmlFor="sim-ext">Sumber berlisensi</label>
           <select id="sim-ext" value={sim.ext} onChange={(e) => setSim({ ...sim, ext: e.target.value as SimulationSettings['ext'] })}>
-            <option value="found">Ada kandidat</option>
-            <option value="none">Tidak ada</option>
-            <option value="down">Sumber tidak tersedia</option>
+            <option value="found">Ada hasil</option>
+            <option value="none">Kosong</option>
+            <option value="down">Tidak tersedia</option>
           </select>
 
-          <label htmlFor="sim-img">AI Image Gen (UC-11)</label>
+          <label htmlFor="sim-img">Layanan AI gambar</label>
           <select id="sim-img" value={sim.img} onChange={(e) => setSim({ ...sim, img: e.target.value as SimulationSettings['img'] })}>
-            <option value="success">Berhasil</option>
+            <option value="success">Normal</option>
             <option value="fail">Gagal</option>
           </select>
 
-          <label htmlFor="sim-upload">Penyimpanan (UC-12)</label>
+          <label htmlFor="sim-upload">Penyimpanan</label>
           <select id="sim-upload" value={sim.upload} onChange={(e) => setSim({ ...sim, upload: e.target.value as SimulationSettings['upload'] })}>
-            <option value="success">Berhasil</option>
-            <option value="fail">Gagal 3x</option>
+            <option value="success">Normal</option>
+            <option value="fail">Gagal</option>
           </select>
 
-          <label htmlFor="sim-submit">Kirim jawaban (UC-14)</label>
+          <label htmlFor="sim-submit">Koneksi kuis</label>
           <select id="sim-submit" value={sim.submit} onChange={(e) => setSim({ ...sim, submit: e.target.value as SimulationSettings['submit'] })}>
-            <option value="success">Berhasil</option>
-            <option value="fail">Koneksi gagal</option>
+            <option value="success">Normal</option>
+            <option value="fail">Terputus</option>
           </select>
 
-          <label htmlFor="sim-match">Pencocokan hasil (UC-15)</label>
+          <label htmlFor="sim-match">Pencocokan nilai</label>
           <select id="sim-match" value={sim.match} onChange={(e) => setSim({ ...sim, match: e.target.value as SimulationSettings['match'] })}>
             <option value="match">Cocok</option>
             <option value="mismatch">Tidak cocok</option>
           </select>
 
-          <label htmlFor="sim-stuContact">Kontak siswa (UC-17)</label>
+          <label htmlFor="sim-stuContact">Kontak siswa</label>
           <select id="sim-stuContact" value={sim.stuContact} onChange={(e) => setSim({ ...sim, stuContact: e.target.value as SimulationSettings['stuContact'] })}>
             <option value="auto">Sesuai data</option>
             <option value="missing">Kosong</option>
           </select>
 
-          <label htmlFor="sim-parentLink">Relasi orang tua (UC-18)</label>
+          <label htmlFor="sim-parentLink">Verifikasi wali</label>
           <select id="sim-parentLink" value={sim.parentLink} onChange={(e) => setSim({ ...sim, parentLink: e.target.value as SimulationSettings['parentLink'] })}>
             <option value="auto">Terverifikasi</option>
-            <option value="unverified">Belum terverifikasi</option>
+            <option value="unverified">Belum</option>
           </select>
 
-          <label htmlFor="sim-channel">Layanan pesan (UC-17/18)</label>
+          <label htmlFor="sim-channel">Layanan pesan</label>
           <select id="sim-channel" value={sim.channel} onChange={(e) => setSim({ ...sim, channel: e.target.value as SimulationSettings['channel'] })}>
-            <option value="sent">Terkirim</option>
+            <option value="sent">Normal</option>
             <option value="fail">Gagal</option>
           </select>
 
-          <label htmlFor="sim-qris">Permintaan QRIS (UC-20)</label>
+          <label htmlFor="sim-qris">Penerbitan QRIS</label>
           <select id="sim-qris" value={sim.qris} onChange={(e) => setSim({ ...sim, qris: e.target.value as SimulationSettings['qris'] })}>
-            <option value="ok">Valid</option>
-            <option value="rejected">REJECTED</option>
+            <option value="ok">Normal</option>
+            <option value="rejected">Ditolak</option>
           </select>
         </div>
 
         <hr />
-        <h3>Layanan QRIS: kirim status (UC-20)</h3>
+        <h3>Notifikasi penyedia pembayaran</h3>
         <div className="sim">
           <label htmlFor="sp-status">Status penyedia</label>
           <select id="sp-status" value={simPay.status} onChange={(e) => setSimPay({ ...simPay, status: e.target.value as SimPaySettings['status'] })}>
@@ -605,13 +588,13 @@ function Workspace() {
         </div>
 
         <button className="btn primary" onClick={handleProviderSend} type="button">
-          Kirim notifikasi ke sistem
+          Kirim notifikasi
         </button>
-        <span className="small muted">Target: transaksi yang sedang dibuka, atau transaksi aktif terakhir.</span>
+        <span className="small muted">Dikirim untuk transaksi yang sedang dibuka atau transaksi aktif terakhir.</span>
 
         <hr />
         <button className="btn danger" onClick={handleResetDemo} type="button">
-          Atur ulang data demo
+          Pulihkan data staging
         </button>
       </aside>
 
@@ -632,98 +615,260 @@ function Workspace() {
 
 /* ===================== Screen Components ===================== */
 
+/* ===================== Landing Page ===================== */
+function LandingPage({ packages, onLoginClick }: { packages: PackageItem[]; onLoginClick: () => void }) {
+  const readyPackages = packages.filter((p) => p.status === 'Ready')
+
+  return (
+    <div className="lp">
+      <section className="hero">
+        <div className="stack" style={{ gap: 16 }}>
+          <span className="eyebrow">Bimbel Antiremed</span>
+          <h1>Satu tempat untuk menyusun, memeriksa, dan membagikan soal latihan</h1>
+          <p className="lead">
+            Antiremed Studio membantu pengajar membuat soal berbantuan AI lengkap dengan pembahasan setiap pilihan jawaban,
+            menyiapkan gambar soal tanpa menyalin tautan satu per satu, lalu membagikan paket latihan kepada siswa.
+            Setiap soal tetap diperiksa pengajar sebelum digunakan.
+          </p>
+          <div className="row">
+            <button className="btn primary" onClick={onLoginClick} type="button">
+              Masuk ke akun
+            </button>
+            <a className="btn" href="#paket">
+              Lihat paket belajar
+            </a>
+          </div>
+        </div>
+
+        <div className="hero-card" aria-hidden="true">
+          <div className="row between">
+            <b className="small">Q-1003 · Teorema Pythagoras</b>
+            <span className="chip c-ok">Tervalidasi</span>
+          </div>
+          <p className="small">Perhatikan gambar segitiga ABC. Jika AB = 5 cm dan BC = 12 cm, panjang AC adalah ...</p>
+          <img
+            src={IMG.tri}
+            alt=""
+            style={{ width: '100%', maxHeight: 150, objectFit: 'contain', background: '#fff', borderRadius: 6, border: '1px solid var(--line)' }}
+          />
+          <div className="opt ok">
+            <span className="l">A</span>
+            <div>
+              <div>13 cm</div>
+              <div className="expl">Benar. AC = √(5² + 12²) = √169 = 13 cm.</div>
+            </div>
+          </div>
+          <div className="opt">
+            <span className="l">B</span>
+            <div>
+              <div>17 cm</div>
+              <div className="expl">Salah. 17 cm adalah AB + BC, bukan sisi miring.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="stack" id="fitur" style={{ gap: 16 }}>
+        <h2 className="sec">Dirancang untuk alur kerja pengajar</h2>
+        <div className="grid g4">
+          <div className="card feat">
+            <div className="ic">1</div>
+            <h3>Soal dan pembahasan lengkap</h3>
+            <p className="small muted">
+              AI menyusun pertanyaan, kunci jawaban, dan alasan mengapa setiap pilihan benar atau salah, sehingga siswa dapat belajar dari kesalahannya.
+            </p>
+          </div>
+          <div className="card feat">
+            <div className="ic">2</div>
+            <h3>Gambar langsung tertaut</h3>
+            <p className="small muted">
+              Gambar diambil dari pustaka Antiremed, sumber berlisensi, atau dibuat AI, lalu tersimpan dan terhubung ke soal secara otomatis.
+            </p>
+          </div>
+          <div className="card feat">
+            <div className="ic">3</div>
+            <h3>Diperiksa sebelum dipakai</h3>
+            <p className="small muted">
+              Hanya soal yang sudah diterima pengajar yang dapat masuk paket. Setiap keputusan dan revisi tercatat.
+            </p>
+          </div>
+          <div className="card feat">
+            <div className="ic">4</div>
+            <h3>Hasil sampai ke orang tua</h3>
+            <p className="small muted">
+              Siswa mengerjakan kuis, nilai tersimpan otomatis, dan ringkasan hasil dikirim kepada wali melalui WhatsApp atau email.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="stack" id="cara-kerja" style={{ gap: 16 }}>
+        <h2 className="sec">Cara kerja</h2>
+        <ol className="steps">
+          <li>
+            <b>Tentukan kebutuhan soal</b>
+            <span className="small muted">Pilih jenjang, mata pelajaran, topik, jumlah, dan tingkat kesulitan.</span>
+          </li>
+          <li>
+            <b>Periksa hasil AI</b>
+            <span className="small muted">Terima, ubah, atau tolak soal. Tambahkan gambar bila diperlukan.</span>
+          </li>
+          <li>
+            <b>Susun paket</b>
+            <span className="small muted">Gabungkan soal tervalidasi menjadi latihan, ulangan harian, TKA, atau SNBT.</span>
+          </li>
+          <li>
+            <b>Bagikan dan pantau</b>
+            <span className="small muted">Siswa mengerjakan kuis, pengajar dan orang tua menerima laporannya.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section className="stack" id="paket" style={{ gap: 16 }}>
+        <div className="row between">
+          <h2 className="sec">Paket belajar tersedia</h2>
+          <span className="small muted">Pembayaran melalui QRIS</span>
+        </div>
+        {readyPackages.length ? (
+          <div className="grid g3">
+            {readyPackages.map((p) => (
+              <div key={p.id} className="card stack">
+                <span className="small muted">
+                  {p.type} · {p.qids.length} soal
+                </span>
+                <b>{p.title}</b>
+                <span className="price">{p.price ? rp(p.price) : 'Gratis'}</span>
+                <button className={`btn ${p.price ? 'primary' : ''}`} onClick={onLoginClick} type="button">
+                  {p.price ? 'Masuk untuk membeli' : 'Masuk untuk mengerjakan'}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="card empty">Paket baru sedang disiapkan pengajar.</div>
+        )}
+      </section>
+
+      <footer className="lp-foot">
+        <span>© {new Date().getFullYear()} Bimbel Antiremed</span>
+        <span>Data siswa digunakan hanya untuk keperluan belajar dan dibagikan kepada wali yang terdaftar.</span>
+      </footer>
+    </div>
+  )
+}
+
 /* S-00 Login */
-function LoginPage({ onSelectRole }: { onSelectRole: (role: Role) => void }) {
-  const [selectedRole, setSelectedRole] = useState<Role>('teacher')
-  const [email, setEmail] = useState('rina@antiremed.id')
+function LoginPage({
+  onSelectRole,
+  onBackToHome,
+}: {
+  onSelectRole: (role: Role) => void
+  onBackToHome?: () => void
+}) {
+  const [email, setEmail] = useState('rina.wulandari@antiremed.id')
   const [password, setPassword] = useState('demo1234')
-  const [errors, setErrors] = useState<{ email?: string; pass?: string }>({})
+  const [errors, setErrors] = useState<{ email?: string; pass?: string; form?: string }>({})
 
-  const roleEmails: Record<Role, string> = {
-    teacher: 'rina@antiremed.id',
-    student: 'dimas@contoh.id',
-    payer: 'sari@contoh.id',
-  }
+  const accts = Object.entries(USERS)
 
-  function handleRolePick(r: Role) {
-    setSelectedRole(r)
-    setEmail(roleEmails[r])
-    setErrors({})
+  function handleSelectAccount(em: string) {
+    const u = USERS[em]
+    if (u) {
+      setEmail(em)
+      setPassword('demo1234')
+      setErrors({})
+      onSelectRole(u.role)
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const err: { email?: string; pass?: string } = {}
-    if (!email.trim()) err.email = 'Email wajib diisi'
-    else if (!/^\S+@\S+\.\S+$/.test(email)) err.email = 'Format email tidak valid'
-    if (!password) err.pass = 'Kata sandi wajib diisi'
+    const trimmedEmail = email.trim().toLowerCase()
+    const err: { email?: string; pass?: string; form?: string } = {}
+    if (!trimmedEmail) err.email = 'Masukkan email Anda'
+    else if (!/^\S+@\S+\.\S+$/.test(trimmedEmail)) err.email = 'Format email belum benar, contoh: nama@antiremed.id'
+    if (!password) err.pass = 'Masukkan kata sandi'
+    else if (password.length < 6) err.pass = 'Kata sandi minimal 6 karakter'
+
+    const user = USERS[trimmedEmail]
+    if (!Object.keys(err).length && !user) {
+      err.form = 'Email atau kata sandi tidak sesuai. Periksa kembali atau hubungi admin Bimbel Antiremed.'
+    }
 
     if (Object.keys(err).length) {
       setErrors(err)
       return
     }
-    onSelectRole(selectedRole)
+
+    if (user) {
+      onSelectRole(user.role)
+    }
   }
 
   return (
-    <div className="login">
+    <div className="login" style={{ maxWidth: 440 }}>
       <div className="stack">
-        <h1>Masuk ke Antiremed Soal Studio</h1>
-        <p className="muted">Prototipe tugas AKPSI. Semua data adalah contoh; integrasi AI, penyimpanan, aplikasi kuis, WhatsApp, dan QRIS disimulasikan melalui Panel simulasi.</p>
+        <h1>Masuk ke Antiremed Studio</h1>
+        <p className="muted">Gunakan email yang terdaftar di Bimbel Antiremed.</p>
       </div>
 
-      <div className="roles" role="radiogroup" aria-label="Peran demo">
-        {(
-          [
-            ['teacher', 'Pengajar', 'Membuat, meninjau, dan memaketkan soal'],
-            ['student', 'Siswa', 'Mengerjakan paket di aplikasi kuis'],
-            ['payer', 'Orang tua / pembayar', 'Menerima hasil dan membeli paket'],
-          ] as const
-        ).map(([k, t, d]) => (
-          <button
-            key={k}
-            type="button"
-            className={`rolecard ${selectedRole === k ? 'on' : ''}`}
-            onClick={() => handleRolePick(k)}
-            role="radio"
-            aria-checked={selectedRole === k}
-          >
-            <b>{t}</b>
-            <span className="muted small">{d}</span>
+      <form className="card stack" onSubmit={handleSubmit} noValidate>
+        {errors.form && (
+          <div className="note bad">
+            <div>{errors.form}</div>
+          </div>
+        )}
+        <label className="f">
+          Email
+          <input
+            type="email"
+            autoComplete="username"
+            placeholder="nama@antiremed.id"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={errors.email ? 'invalid' : ''}
+          />
+          {errors.email && <span className="err">{errors.email}</span>}
+        </label>
+        <label className="f">
+          Kata sandi
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={errors.pass ? 'invalid' : ''}
+          />
+          {errors.pass && <span className="err">{errors.pass}</span>}
+        </label>
+        <button className="btn primary" type="submit" style={{ justifyContent: 'center' }}>
+          Masuk
+        </button>
+        <span className="small muted">Lupa kata sandi? Hubungi admin Bimbel Antiremed untuk mengatur ulang.</span>
+      </form>
+
+      <div className="stack">
+        <span className="small muted">Akun yang pernah masuk di perangkat ini</span>
+        {accts.map(([em, u]) => (
+          <button key={em} className="acct" onClick={() => handleSelectAccount(em)} type="button">
+            <div className="avatar">
+              {u.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}
+            </div>
+            <span>
+              <b>{u.name}</b>
+              <small>
+                {u.title} · {em}
+              </small>
+            </span>
           </button>
         ))}
       </div>
 
-      <form className="card stack" onSubmit={handleSubmit} noValidate>
-        <div className="grid g2">
-          <label className="f">
-            Email
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className={errors.email ? 'invalid' : ''}
-            />
-            {errors.email && <span className="err">{errors.email}</span>}
-          </label>
-          <label className="f">
-            Kata sandi
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={errors.pass ? 'invalid' : ''}
-            />
-            {errors.pass && <span className="err">{errors.pass}</span>}
-          </label>
-        </div>
-        <div className="row between">
-          <span className="muted small">Akun contoh terisi otomatis. Kosongkan field untuk melihat validasi.</span>
-          <button className="btn primary" type="submit">
-            Masuk
-          </button>
-        </div>
-      </form>
+      {onBackToHome && (
+        <button className="btn ghost sm" onClick={onBackToHome} type="button" style={{ alignSelf: 'flex-start' }}>
+          ← Kembali ke halaman utama
+        </button>
+      )}
     </div>
   )
 }
@@ -800,15 +945,15 @@ function DashboardPage({ data, onReviewQ }: { data: ReturnType<typeof initialSee
         </div>
 
         <div className="card stack">
-          <h2>Aktivitas sistem terbaru</h2>
+          <h2>Aktivitas terbaru</h2>
           {data.log.slice(0, 6).map((l, idx) => (
             <div key={idx} className="small">
-              <span className="tag">{l.uc}</span> {l.msg}
+              <span className="tag">{CAT[l.uc] || 'Sistem'}</span> {l.msg}
               <div className="muted mono">{l.t}</div>
             </div>
           ))}
           <Link className="btn sm ghost" to="/logs">
-            Buka log
+            Lihat semua aktivitas
           </Link>
         </div>
       </div>
@@ -923,7 +1068,7 @@ function GeneratorPage({ onStartPipeline }: { onStartPipeline: (p: PipelineState
           </div>
 
           <div className="row between">
-            <span className="muted small">Sistem memvalidasi parameter sebelum mengirim ke AI (UC-01 langkah 8).</span>
+            <span className="muted small">Proses biasanya selesai dalam satu menit.</span>
             <button className="btn primary" type="submit">
               Hasilkan soal
             </button>
@@ -931,12 +1076,12 @@ function GeneratorPage({ onStartPipeline }: { onStartPipeline: (p: PipelineState
         </form>
 
         <div className="card flat stack small">
-          <h3>Yang terjadi setelah Anda menekan Hasilkan</h3>
-          <p>1. Generative AI membuat pertanyaan, pilihan, dan kunci (UC-01).</p>
-          <p>2. AI menulis penjelasan untuk setiap pilihan (UC-02).</p>
-          <p>3. Sistem menyusun data terstruktur dan metadata taksonomi (UC-03, FR-04).</p>
-          <p>4. Multimodal AI mendeteksi kebutuhan media (UC-08).</p>
-          <p className="muted">Ubah respons simulasi lewat Panel simulasi: AI gagal, penjelasan tidak lengkap.</p>
+          <h3>Yang Anda terima</h3>
+          <p>1. Pertanyaan, lima pilihan jawaban, dan kunci.</p>
+          <p>2. Pembahasan untuk setiap pilihan, termasuk alasan pilihan yang salah.</p>
+          <p>3. Klasifikasi jenjang, mata pelajaran, dan topik agar mudah dicari di bank soal.</p>
+          <p>4. Penanda soal yang memerlukan gambar.</p>
+          <p className="muted">Anda dapat meninggalkan halaman ini selama proses berjalan.</p>
         </div>
       </div>
     </>
@@ -965,10 +1110,10 @@ function PipelinePage({
   const ranRef = useRef(false)
 
   const names = [
-    ['UC-01', 'Menghasilkan pertanyaan, pilihan, dan kunci'],
-    ['UC-02', 'Membuat penjelasan setiap pilihan jawaban'],
-    ['UC-03', 'Menyusun struktur data terstandar dan metadata'],
-    ['UC-08', 'Mendeteksi kebutuhan media visual'],
+    ['', 'Menyusun pertanyaan, pilihan, dan kunci'],
+    ['', 'Menulis pembahasan setiap pilihan'],
+    ['', 'Menyimpan soal dan klasifikasi'],
+    ['', 'Memeriksa kebutuhan gambar'],
   ]
 
   useEffect(() => {
@@ -984,10 +1129,10 @@ function PipelinePage({
         setPState((prev) => (prev ? {
           ...prev,
           steps: ['fail', 'wait', 'wait', 'wait'],
-          notes: ['Batas waktu 120 detik terlewati (simulasi)'],
+          notes: ['Tidak ada respons dalam 120 detik'],
           state: 'fail',
         } : null))
-        addLog('UC-01', 'Generative AI gagal menghasilkan soal (A2), tidak ada data tersimpan')
+        addLog('UC-01', 'Layanan AI tidak merespons; tidak ada soal yang disimpan')
         return
       }
 
@@ -1011,36 +1156,36 @@ function PipelinePage({
         steps: ['done', 'run', 'wait', 'wait'],
         notes: [`${ids.length} soal`],
       } : null))
-      addLog('UC-01', `Generative AI menghasilkan ${ids.length} soal (${ids.join(', ')})`)
+      addLog('UC-01', `${ids.length} soal baru dibuat (${ids.join(', ')})`)
 
       await wait(800)
       let warn = ''
       if (sim.explain === 'incomplete') {
         newQuestions[0].options[3].explanation = ''
         newQuestions[0].flags = ['Penjelasan opsi D kosong']
-        warn = 'Satu soal ditandai Perlu Revisi karena penjelasan opsi D kosong (UC-02 A2).'
+        warn = 'Satu soal ditandai Perlu Revisi karena pembahasan opsi D belum tersedia.'
         setPState((prev) => (prev ? {
           ...prev,
           steps: ['done', 'warn', 'run', 'wait'],
-          notes: [prev.notes[0], '1 soal penjelasannya tidak lengkap'],
+          notes: [prev.notes[0], '1 soal pembahasannya belum lengkap'],
         } : null))
-        addLog('UC-02', `Penjelasan ${ids[0]} tidak lengkap, ditandai untuk perbaikan`)
+        addLog('UC-02', `Pembahasan ${ids[0]} belum lengkap, ditandai untuk diperbaiki`)
       } else {
         setPState((prev) => (prev ? {
           ...prev,
           steps: ['done', 'done', 'run', 'wait'],
-          notes: [prev.notes[0], 'Semua opsi berpenjelasan'],
+          notes: [prev.notes[0], 'Semua pilihan memiliki pembahasan'],
         } : null))
-        addLog('UC-02', `Penjelasan dibuat untuk ${ids.length} soal`)
+        addLog('UC-02', `Pembahasan dibuat untuk ${ids.length} soal`)
       }
 
       await wait(700)
       setPState((prev) => (prev ? {
         ...prev,
         steps: ['done', prev.steps[1], 'done', 'run'],
-        notes: [prev.notes[0], prev.notes[1], `Metadata: ${SUBJECTS[p.subject] || p.subject}, ${p.level}, ${p.topic}`],
+        notes: [prev.notes[0], prev.notes[1], `${SUBJECTS[p.subject] || p.subject} · ${p.level} · ${p.topic}`],
       } : null))
-      addLog('UC-03', `Struktur data dan metadata tersimpan untuk ${ids.length} soal`)
+      addLog('UC-03', `${ids.length} soal tersimpan di bank soal`)
 
       await wait(800)
       const cnt = { Required: 0, NeedsCheck: 0 }
@@ -1064,7 +1209,7 @@ function PipelinePage({
       setPState((prev) => (prev ? {
         ...prev,
         steps: ['done', prev.steps[1], 'done', cnt.NeedsCheck ? 'warn' : 'done'],
-        notes: [prev.notes[0], prev.notes[1], prev.notes[2], `${cnt.Required} butuh media, ${cnt.NeedsCheck} perlu dicek`],
+        notes: [prev.notes[0], prev.notes[1], prev.notes[2], `${cnt.Required} perlu gambar, ${cnt.NeedsCheck} perlu dipastikan`],
         state: 'done',
         warn,
       } : null))
@@ -1091,7 +1236,7 @@ function PipelinePage({
     <>
       <div className="head">
         <div>
-          <h1>Proses AI</h1>
+          <h1>Proses pembuatan soal</h1>
           <p className="muted">
             {SUBJECTS[p.subject] || p.subject} · {p.level} · {p.topic} · {p.count} soal
           </p>
@@ -1101,16 +1246,15 @@ function PipelinePage({
       <div className="split">
         <div className="card">
           <div className="pipe">
-            {names.map(([uc, n], i) => {
+            {names.map(([, n], i) => {
               const s = steps[i] || 'wait'
               return (
-                <div key={uc} className={`step ${s}`}>
+                <div key={i} className={`step ${s}`}>
                   <div className="dot">{s === 'done' ? '✓' : s === 'fail' || s === 'warn' ? '!' : ''}</div>
                   <div>
                     <b>{n}</b>
                     <div className="small muted">
-                      {uc}
-                      {notes[i] ? ' · ' + notes[i] : ''}
+                      {notes[i] ? notes[i] : '\u00a0'}
                     </div>
                   </div>
                   <span className="small muted">
@@ -1127,12 +1271,15 @@ function PipelinePage({
             <>
               <div className="note bad">
                 <div>
-                  <b>Generative AI tidak merespons.</b> Tidak ada soal yang disimpan dan parameter Anda masih ada. Coba lagi atau ubah parameter.
+                  <b>Layanan AI sedang tidak merespons.</b> Belum ada soal yang tersimpan dan pengaturan Anda tidak hilang. Coba lagi dalam beberapa saat atau ubah pengaturan soal.
                 </div>
               </div>
               <div className="row">
                 <Link className="btn primary" to="/generator">
                   Coba lagi
+                </Link>
+                <Link className="btn" to="/generator">
+                  Ubah pengaturan
                 </Link>
               </div>
             </>
@@ -1140,7 +1287,7 @@ function PipelinePage({
             <>
               <div className={`note ${warn ? 'warn' : 'ok'}`}>
                 <div>
-                  <b>{ids.length} soal tersimpan sebagai draf terstruktur.</b> {warn || 'Soal siap ditinjau.'}
+                  <b>{ids.length} soal tersimpan sebagai draf.</b> {warn || 'Soal siap ditinjau.'}
                 </div>
               </div>
               <div className="card stack">
@@ -1163,7 +1310,7 @@ function PipelinePage({
             </>
           ) : (
             <div className="note info">
-              <div>AI sedang bekerja. Anda dapat meninggalkan halaman ini; proses berlanjut di latar belakang (NFR-05).</div>
+              <div>Soal sedang disusun. Anda dapat membuka halaman lain; proses tetap berjalan dan hasilnya muncul di Bank soal.</div>
             </div>
           )}
         </div>
@@ -1208,7 +1355,7 @@ function BankPage({ data, onReviewQ }: { data: ReturnType<typeof initialSeed>; o
       <div className="head">
         <div>
           <h1>Bank soal</h1>
-          <p className="muted">Cari dan saring soal berdasarkan taksonomi (FR-04) dan status validasi.</p>
+          <p className="muted">Cari soal berdasarkan mata pelajaran, jenjang, topik, dan status pemeriksaan.</p>
         </div>
         <div className="actions">
           <Link className="btn primary" to="/generator">
@@ -1465,7 +1612,7 @@ function ReviewPage({
           : item
       ),
     }))
-    addLog('UC-04', `${q.id} ditunda → Perlu Revisi (A1)`)
+    addLog('UC-04', `${q.id} ditunda: ditandai perlu revisi`)
     showToast('Soal ditandai perlu revisi')
   }
 
@@ -1565,27 +1712,27 @@ function ReviewPage({
               ))
             ) : (
               <div className="small" style={{ color: 'var(--ok)' }}>
-                ✓ Pertanyaan, pilihan, kunci, penjelasan, dan media lengkap
+                ✓ Pertanyaan, pilihan, kunci, pembahasan, dan gambar lengkap
               </div>
             )}
             <div className="small muted">
-              Struktur data (UC-03): {q.options.length} pilihan terpetakan, metadata lengkap.
+              {q.options.length} pilihan jawaban · {SUBJECTS[q.subject] || q.subject} · {q.level}
             </div>
           </div>
 
           {canDecide ? (
             <div className="card stack">
-              <h3>Keputusan peninjauan</h3>
+              <h3>Keputusan</h3>
               <button className="btn primary" onClick={handleAccept} disabled={iss.length > 0} type="button">
                 Terima soal
               </button>
-              {iss.length > 0 && <span className="small muted">Terima nonaktif sampai kekurangan di atas diperbaiki (UC-05 A2).</span>}
+              {iss.length > 0 && <span className="small muted">Lengkapi kekurangan di atas untuk dapat menerima soal.</span>}
               <button className="btn" onClick={() => onEditQ(q.id)} type="button">
                 Ubah soal
               </button>
               {q.mediaReq !== 'NotRequired' && (
                 <button className="btn" onClick={() => onMediaQ(q.id)} type="button">
-                  Kelola media
+                  Atur gambar
                 </button>
               )}
               {q.status === 'InReview' && (
@@ -1723,7 +1870,7 @@ function EditPage({
       {Object.keys(errors).length > 0 && (
         <div className="note bad">
           <div>
-            <b>Perubahan belum dapat disimpan.</b> Perbaiki field bertanda merah (UC-06 A1).
+            <b>Perubahan belum dapat disimpan.</b> Lengkapi isian yang ditandai merah.
           </div>
         </div>
       )}
@@ -1847,23 +1994,23 @@ function MediaWorkbenchPage({
     } else if (tab === 'ext') {
       addLog('UC-09', `Cari sumber diperbolehkan untuk ${q.id}`)
       if (sim.ext === 'down') {
-        setErr('Sumber media tidak dapat dihubungi. Kegagalan dicatat; coba lagi beberapa saat lagi (UC-09 A2).')
+        setErr('Sumber gambar sedang tidak dapat dihubungi. Coba lagi beberapa saat lagi atau gunakan pustaka Antiremed.')
       } else if (sim.ext === 'none') {
         setEmpty(true)
       } else {
         const k = topicKey(q)
         setCands([
-          { title: 'Diagram ' + q.topic.toLowerCase() + ' (CC BY 4.0)', img: k === 'tri' ? IMG.tri2 : IMG[k], source: 'Sumber diperbolehkan · repositori pendidikan terbuka', rights: 'CC BY 4.0', ok: true },
-          { title: 'Ilustrasi ' + q.topic.toLowerCase() + ' dari galeri umum', img: k === 'tri' ? IMG.tri3 : IMG[k], source: 'Sumber diperbolehkan · galeri umum', rights: '', ok: false },
+          { title: 'Diagram ' + q.topic.toLowerCase() + ' (CC BY 4.0)', img: k === 'tri' ? IMG.tri2 : IMG[k], source: 'Repositori pendidikan terbuka', rights: 'CC BY 4.0', ok: true },
+          { title: 'Ilustrasi ' + q.topic.toLowerCase() + ' dari galeri umum', img: k === 'tri' ? IMG.tri3 : IMG[k], source: 'Galeri gambar umum', rights: '', ok: false },
         ])
       }
     } else {
       addLog('UC-11', `Generate media untuk ${q.id}`)
       if (sim.img === 'fail') {
-        setErr('Layanan AI Image Generation gagal membuat gambar. Kegagalan dicatat; Anda dapat mencoba lagi atau beralih ke pencarian (UC-11 A1).')
+        setErr('Gambar belum berhasil dibuat. Coba lagi, ubah deskripsi gambar, atau cari di pustaka.')
       } else {
         setCands([
-          { title: 'Gambar hasil AI: ' + q.topic.toLowerCase(), img: topicKey(q) === 'tri' ? IMG.tri3 : IMG[topicKey(q)], source: 'AI Image Generation', rights: 'Dibuat untuk Antiremed', ok: true, ai: true },
+          { title: 'Gambar hasil AI: ' + q.topic.toLowerCase(), img: topicKey(q) === 'tri' ? IMG.tri3 : IMG[topicKey(q)], source: 'Dibuat dengan AI', rights: 'Milik Antiremed', ok: true, ai: true },
         ])
       }
     }
@@ -1894,16 +2041,16 @@ function MediaWorkbenchPage({
       const m = data.media.find((x) => x.id === c.existing)
       if (m) m.status = 'Linked'
       linkMedia(c.existing)
-      setUploadSteps([...steps, 'Media repositori dipakai ulang tanpa unggah ulang (UC-12 A4)', '✓ Tautan disimpan dan dihubungkan ke soal'])
-      addLog('UC-12', `${c.existing} ditautkan ke ${q.id} (pakai ulang)`)
-      showToast('Media tertaut ke soal')
+      setUploadSteps([...steps, 'Gambar dari pustaka dipakai ulang tanpa diunggah lagi', '✓ Gambar terpasang pada soal'])
+      addLog('UC-12', `Gambar ${c.existing} dipasang pada ${q.id}`)
+      showToast('Gambar terpasang pada soal')
       return
     }
 
     // Upload simulation
     let success = false
     for (let a = 1; a <= 3; a++) {
-      steps.push(`Mengunggah ke Google Cloud Storage, percobaan ${a}…`)
+      steps.push(`Menyimpan ke pustaka gambar${a > 1 ? ' (percobaan ' + a + ')' : ''}…`)
       setUploadSteps([...steps])
       await wait(500)
       if (sim.upload === 'success') {
@@ -1923,22 +2070,22 @@ function MediaWorkbenchPage({
           seq: { ...prev.seq, m: prev.seq.m + 1 },
         }))
         linkMedia(mId)
-        steps.push(`✓ Tersimpan sebagai ${mId}, tautan diperoleh dan dihubungkan ke soal`)
+        steps.push(`✓ Tersimpan sebagai ${mId} dan terpasang pada soal`)
         setUploadSteps([...steps])
-        addLog('UC-12', `${mId} disimpan dan ditautkan ke ${q.id}`)
-        showToast('Media tersimpan dan tertaut')
+        addLog('UC-12', `Gambar ${mId} disimpan dan dipasang pada ${q.id}`)
+        showToast('Gambar tersimpan dan terpasang')
         success = true
         break
       }
-      steps.push(`✕ Percobaan ${a} gagal`)
+      steps.push(`✕ Gagal menyimpan`)
       setUploadSteps([...steps])
     }
 
     if (!success) {
-      steps.push('Media ditandai Tidak tersedia. Soal belum ditandai media terpenuhi (UC-12 A3).')
+      steps.push('Gambar belum tersimpan setelah tiga kali percobaan. Soal tetap menunggu gambar.')
       setUploadSteps([...steps])
       setUploadFail(true)
-      addLog('UC-12', `Unggah media untuk ${q.id} gagal setelah 3 percobaan`)
+      addLog('UC-12', `Penyimpanan gambar untuk ${q.id} gagal setelah 3 percobaan`)
     }
   }
 
@@ -1984,7 +2131,7 @@ function MediaWorkbenchPage({
           <>
             <div className="note warn">
               <div>
-                <b>Hasil deteksi tidak meyakinkan (UC-08 A1).</b> Pastikan apakah soal ini memerlukan media.
+                <b>Sistem belum yakin soal ini memerlukan gambar.</b> Pastikan berdasarkan isi soal.
               </div>
             </div>
             <div className="row">
@@ -1995,11 +2142,11 @@ function MediaWorkbenchPage({
                     ...prev,
                     questions: prev.questions.map((item) => (item.id === q.id ? { ...item, mediaReq: 'Required' } : item)),
                   }))
-                  addLog('UC-08', `Pengajar memastikan kebutuhan media ${q.id}: Butuh media`)
+                  addLog('UC-08', `Kebutuhan gambar ${q.id} dipastikan: ${MR_LABEL.Required}`)
                 }}
                 type="button"
               >
-                Ya, butuh media
+                Ya, perlu gambar
               </button>
               <button
                 className="btn"
@@ -2008,11 +2155,11 @@ function MediaWorkbenchPage({
                     ...prev,
                     questions: prev.questions.map((item) => (item.id === q.id ? { ...item, mediaReq: 'NotRequired' } : item)),
                   }))
-                  addLog('UC-08', `Pengajar memastikan kebutuhan media ${q.id}: Tanpa media`)
+                  addLog('UC-08', `Kebutuhan gambar ${q.id} dipastikan: ${MR_LABEL.NotRequired}`)
                 }}
                 type="button"
               >
-                Tidak perlu media
+                Tidak perlu gambar
               </button>
             </div>
           </>
@@ -2038,10 +2185,10 @@ function MediaWorkbenchPage({
           <>
             <div className="tabs" role="tablist">
               {[
-                ['repo', 'Repositori Antiremed', 'UC-10'],
-                ['ext', 'Sumber diperbolehkan', 'UC-09'],
-                ['ai', 'Hasilkan dengan AI', 'UC-11'],
-              ].map(([k, l, u]) => (
+                ['repo', 'Pustaka Antiremed'],
+                ['ext', 'Sumber berlisensi'],
+                ['ai', 'Buat dengan AI'],
+              ].map(([k, l]) => (
                 <button
                   key={k}
                   className={`tab ${tab === k ? 'on' : ''}`}
@@ -2055,7 +2202,7 @@ function MediaWorkbenchPage({
                   aria-selected={tab === k}
                   type="button"
                 >
-                  {l} <span className="tag">{u}</span>
+                  {l}
                 </button>
               ))}
             </div>
@@ -2092,14 +2239,14 @@ function MediaWorkbenchPage({
 
             {empty && (
               <div className="card empty">
-                <b>Tidak ada media yang cocok.</b>
+                <b>Belum ada gambar yang cocok.</b>
                 <span>
                   {tab === 'repo'
-                    ? 'Lanjutkan pencarian ke sumber eksternal yang diperbolehkan (UC-10 A1).'
-                    : 'Coba hasilkan gambar dengan AI (UC-09 A1).'}
+                    ? 'Coba cari di sumber berlisensi.'
+                    : 'Anda dapat membuat gambar baru dengan AI.'}
                 </span>
                 <button className="btn" onClick={() => setTab(tab === 'repo' ? 'ext' : 'ai')} type="button">
-                  {tab === 'repo' ? 'Cari di sumber diperbolehkan' : 'Hasilkan dengan AI'}
+                  {tab === 'repo' ? 'Cari di sumber berlisensi' : 'Buat dengan AI'}
                 </button>
               </div>
             )}
@@ -2118,9 +2265,9 @@ function MediaWorkbenchPage({
                         <span className="chip c-mark">Lisensi belum jelas</span>
                       )}
                     </span>
-                    {c.ai && <span className="small muted">Hasil AI, periksa ketepatan label sebelum dipakai (UC-11 A3).</span>}
+                    {c.ai && <span className="small muted">Gambar buatan AI. Periksa ketepatan label dan angka sebelum dipakai.</span>}
                     <button className={`btn sm ${c.ok ? 'primary' : ''}`} onClick={() => handleUse(c)} disabled={!c.ok} type="button">
-                      {c.ok ? 'Setujui dan gunakan' : 'Tidak dapat dipilih'}
+                      {c.ok ? 'Gunakan gambar ini' : 'Lisensi perlu dikonfirmasi'}
                     </button>
                   </div>
                 ))}
@@ -2129,7 +2276,7 @@ function MediaWorkbenchPage({
 
             {uploadSteps.length > 0 && (
               <div className="card stack">
-                <h3>Menyimpan ke repositori (UC-12)</h3>
+                <h3>Menyimpan gambar</h3>
                 {uploadSteps.map((u, idx) => (
                   <div key={idx} className="small">
                     {u}
@@ -2138,7 +2285,7 @@ function MediaWorkbenchPage({
                 {uploadFail && pendingCand && (
                   <div className="row">
                     <button className="btn primary" onClick={() => handleUse(pendingCand)} type="button">
-                      Coba simpan lagi
+                      Simpan ulang
                     </button>
                   </div>
                 )}
@@ -2357,13 +2504,13 @@ function PackageBuilderPage({
     e.preventDefault()
     const v: string[] = []
     if (!title.trim()) v.push('Judul paket wajib diisi')
-    if (!p.qids.length) v.push('Pilih sekurang-kurangnya satu soal (UC-13 A1)')
+    if (!p.qids.length) v.push('Pilih sekurang-kurangnya satu soal')
 
     p.qids.forEach((qid) => {
       const q = data.questions.find((x) => x.id === qid)
       if (q) {
-        if (q.status !== 'Accepted') v.push(`${qid} belum tervalidasi (UC-13 A2)`)
-        if (q.mediaReq === 'Required' || q.mediaReq === 'NeedsCheck') v.push(`${qid}: kebutuhan media belum terpenuhi`)
+        if (q.status !== 'Accepted') v.push(`${qid} belum tervalidasi`)
+        if (q.mediaReq === 'Required' || q.mediaReq === 'NeedsCheck') v.push(`${qid} masih menunggu gambar`)
       }
     })
 
@@ -2376,7 +2523,7 @@ function PackageBuilderPage({
       addLog('UC-13', `${p.id} lolos validasi → Siap Digunakan`)
       showToast('Paket siap digunakan')
     } else {
-      addLog('UC-13', `${p.id} gagal validasi: ${v.length} kekurangan (A3)`)
+      addLog('UC-13', `Paket ${p.title} belum siap: ${v.length} kekurangan`)
     }
   }
 
@@ -2460,7 +2607,7 @@ function PackageBuilderPage({
                     <span className="row">
                       <span className={`chip ${QS_CLS[q.status]}`}>{QS_LABEL[q.status]}</span>
                       <span className={`chip ${MR_CLS[q.mediaReq]}`}>{MR_LABEL[q.mediaReq]}</span>
-                      {!ok && <span className="small muted">Hanya soal tervalidasi yang dapat dipilih (UC-13 A2)</span>}
+                      {!ok && <span className="small muted">Tinjau dan terima soal ini terlebih dahulu</span>}
                     </span>
                   </span>
                 </label>
@@ -2537,9 +2684,10 @@ function QuizListPage({
 
   return (
     <>
-      <div className="note info">
+      <div className="head">
         <div>
-          Layar ini mensimulasikan <b>Aplikasi Kuis eksternal</b>. Aplikasi meminta paket tervalidasi dari sistem lalu mengirim hasil kembali (UC-14, UC-15).
+          <h1>Kuis saya</h1>
+          <p className="muted">Kerjakan paket dari pengajar. Nilai dan pembahasan tersimpan otomatis.</p>
         </div>
       </div>
 
@@ -2572,7 +2720,7 @@ function QuizListPage({
                       Mulai
                     </button>
                   ) : (
-                    <span className="small muted">Orang tua dapat membeli paket ini di katalog.</span>
+                    <span className="small muted">Minta orang tua mengaktifkan paket ini melalui akun mereka.</span>
                   )}
                 </div>
               )
@@ -2580,7 +2728,7 @@ function QuizListPage({
           ) : (
             <div className="empty">
               <b>Belum ada kuis.</b>
-              <span>Paket akan muncul setelah pengajar menandainya siap (UC-14 A1).</span>
+              <span>Paket baru akan muncul di sini setelah pengajar membagikannya.</span>
             </div>
           )}
         </div>
@@ -2640,7 +2788,7 @@ function QuizTakerPage({
 
     if (sim.submit === 'fail') {
       setAttempt((prev) => (prev ? { ...prev, sending: false, err: true } : null))
-      addLog('UC-14', 'Pengiriman jawaban dari aplikasi kuis gagal (A2)')
+      addLog('UC-14', 'Pengiriman jawaban kuis gagal karena koneksi terputus')
       return
     }
 
@@ -2801,7 +2949,7 @@ function QuizTakerPage({
         {attempt.err && (
           <div className="note bad">
             <div>
-              <b>Jawaban gagal terkirim.</b> Koneksi ke sistem terputus. Jawaban Anda masih tersimpan di perangkat; kirim ulang (UC-14 A2).
+              <b>Jawaban belum terkirim.</b> Koneksi terputus. Jawaban Anda masih tersimpan di perangkat ini, silakan kirim ulang.
             </div>
           </div>
         )}
@@ -2872,7 +3020,7 @@ function QuizDonePage({ data }: { data: ReturnType<typeof initialSeed> }) {
           <>
             <div className="note ok">
               <div>
-                <b>Hasil tersimpan di sistem (UC-15).</b>
+                <b>Jawaban terkirim dan nilai tersimpan.</b>
               </div>
             </div>
             <div className="price">
@@ -2886,7 +3034,7 @@ function QuizDonePage({ data }: { data: ReturnType<typeof initialSeed> }) {
         ) : (
           <div className="note warn">
             <div>
-              <b>Jawaban diterima, tetapi belum dapat dikaitkan dengan akun Anda.</b> Sistem tidak menyimpan hasil ke data yang salah dan mencatat masalah ini untuk diperiksa pengajar (UC-15 A2).
+              <b>Jawaban diterima, tetapi nilai belum tercatat di akun Anda.</b> Pengajar akan memeriksa dan menambahkannya. Anda tidak perlu mengerjakan ulang.
             </div>
           </div>
         )}
@@ -2933,8 +3081,8 @@ function ResultsPage({
     <>
       <div className="head">
         <div>
-          <h1>Hasil dan distribusi</h1>
-          <p className="muted">Ringkasan disusun otomatis setelah hasil tersimpan (UC-16), lalu dikirim ke siswa dan orang tua (UC-17, UC-18).</p>
+          <h1>Laporan belajar</h1>
+          <p className="muted">Ringkasan nilai disusun otomatis setelah siswa mengirim jawaban, lalu dikirim kepada siswa dan walinya.</p>
         </div>
       </div>
 
@@ -2994,14 +3142,14 @@ function ResultsPage({
         })
       ) : (
         <div className="card empty">
-          <b>Belum ada hasil pembelajaran.</b>
-          <span>Hasil muncul setelah siswa mengirim jawaban dan sistem menyimpannya (UC-16 A1). Masuk sebagai Siswa untuk mengerjakan kuis.</span>
+          <b>Belum ada laporan.</b>
+          <span>Laporan akan muncul setelah siswa menyelesaikan kuis.</span>
         </div>
       )}
 
       {data.attempts.some((a) => a.status !== 'Stored') && (
         <div className="card stack">
-          <h3>Hasil yang belum dapat dikaitkan (UC-15 A2)</h3>
+          <h3>Jawaban yang perlu diperiksa</h3>
           {data.attempts.filter((a) => a.status !== 'Stored').map((a) => (
             <div key={a.id} className="small">
               <span className="mono">{a.id}</span> paket {a.pid} · {a.at} <span className="chip c-mark">Ditahan</span>
@@ -3256,12 +3404,12 @@ function CheckoutPage({
 
         <label className={`check ${error ? 'invalid' : ''}`}>
           <input type="checkbox" checked={guardian} onChange={(e) => setGuardian(e.target.checked)} />
-          Saya orang tua/wali Dimas dan menyetujui pemrosesan data belajarnya sesuai kebijakan privasi (NFR-11).
+          Saya orang tua/wali Dimas dan menyetujui data belajarnya diproses untuk keperluan belajar di Bimbel Antiremed.
         </label>
         {error && <span className="err">{error}</span>}
 
         <div className="row between">
-          <span className="small muted">Status pembayaran hanya berubah setelah dikonfirmasi penyedia.</span>
+          <span className="small muted">Akses aktif setelah pembayaran terkonfirmasi.</span>
           <button className="btn primary" type="submit">
             Bayar dengan QRIS
           </button>
@@ -3374,13 +3522,13 @@ function QrisPage({
                 Berlaku <b className="mono">{timeFormatted}</b>
               </span>
               <div className="note info">
-                <div>Memindai kode tidak langsung mengubah status. Halaman ini diperbarui otomatis setelah penyedia mengonfirmasi pembayaran (UC-21).</div>
+                <div>Halaman ini diperbarui otomatis setelah pembayaran dikonfirmasi. Jangan tutup halaman sebelum status berubah.</div>
               </div>
               <div className="row">
                 <button
                   className="btn"
                   onClick={() => {
-                    addLog('UC-21', `Cek ulang status ${x.id} ke API penyedia: ${PAY_LABEL[x.status]}`)
+                    addLog('UC-21', `Status ${x.id} diperiksa ulang: ${PAY_LABEL[x.status]}`)
                     showToast('Status terbaru: ' + PAY_LABEL[x.status])
                   }}
                   type="button"
@@ -3391,21 +3539,21 @@ function QrisPage({
                   Batalkan
                 </button>
               </div>
-              <span className="small muted">QR simulasi, tidak dapat dipindai. Kirim status penyedia lewat Panel simulasi → Layanan QRIS (UC-20).</span>
+              <span className="small muted">Lingkungan staging: kode ini tidak terhubung ke bank dan tidak menarik dana.</span>
             </div>
           </div>
         ) : x.status === 'Pending' ? (
           <>
             <div className="note warn">
               <div>
-                <b>Pembayaran sedang diproses penyedia.</b> Akses paket belum aktif. Sistem memeriksa ulang status secara berkala (UC-21 A3).
+                <b>Pembayaran sedang diproses.</b> Akses paket akan aktif setelah pembayaran terkonfirmasi. Status diperiksa ulang secara berkala.
               </div>
             </div>
             <div className="row">
               <button
                 className="btn"
                 onClick={() => {
-                  addLog('UC-21', `Cek ulang status ${x.id} ke API penyedia: ${PAY_LABEL[x.status]}`)
+                  addLog('UC-21', `Status ${x.id} diperiksa ulang: ${PAY_LABEL[x.status]}`)
                   showToast('Status terbaru: ' + PAY_LABEL[x.status])
                 }}
                 type="button"
@@ -3418,11 +3566,11 @@ function QrisPage({
           <>
             <div className="note ok">
               <div>
-                <b>Pembayaran berhasil dan terverifikasi.</b> Akses {p ? p.title : ''} untuk Dimas sudah aktif.
+                <b>Pembayaran berhasil.</b> Dimas sudah dapat mengerjakan {p ? p.title : ''}.
               </div>
             </div>
             <button className="btn" onClick={() => navigate('/catalog')} type="button">
-              Kembali ke katalog
+              Kembali ke paket belajar
             </button>
           </>
         ) : x.status === 'Failed' ? (
@@ -3437,10 +3585,10 @@ function QrisPage({
                     : 'Pembayaran gagal.'}
                 </b>{' '}
                 {x.reason === 'rejected'
-                  ? 'Penyedia menolak permintaan transaksi. Tidak ada dana yang ditarik.'
+                  ? 'Transaksi tidak dapat dibuat saat ini. Tidak ada dana yang ditarik. Silakan coba lagi.'
                   : x.reason === 'expired'
                   ? 'Tidak ada pembayaran yang terkonfirmasi dalam 15 menit. Buat transaksi baru untuk mencoba lagi.'
-                  : 'Penyedia melaporkan pembayaran gagal. Akses tidak diaktifkan.'}
+                  : 'Pembayaran tidak berhasil dan akses belum diaktifkan. Silakan coba lagi atau gunakan aplikasi pembayaran lain.'}
               </div>
             </div>
             <button className="btn primary" onClick={() => onRetryBuy(x.packageId)} type="button">
@@ -3455,7 +3603,7 @@ function QrisPage({
               </div>
             </div>
             <button className="btn" onClick={() => navigate('/catalog')} type="button">
-              Kembali ke katalog
+              Kembali ke paket belajar
             </button>
           </>
         )}
@@ -3481,8 +3629,8 @@ function ConfirmationPage({ data }: { data: ReturnType<typeof initialSeed> }) {
     <>
       <div className="head">
         <div>
-          <h1>Konfirmasi pembayaran</h1>
-          <p className="muted">Setiap notifikasi penyedia diverifikasi terhadap idTransaksi, jumlah, pengguna, dan paket sebelum status disimpan (UC-21).</p>
+          <h1>Transaksi</h1>
+          <p className="muted">Setiap notifikasi pembayaran dicocokkan dengan ID transaksi, jumlah, pembeli, dan paket sebelum akses diaktifkan.</p>
         </div>
       </div>
 
@@ -3490,10 +3638,10 @@ function ConfirmationPage({ data }: { data: ReturnType<typeof initialSeed> }) {
         <table>
           <thead>
             <tr>
-              <th>Konfirmasi</th>
+              <th>Waktu</th>
               <th>Transaksi</th>
               <th>Status penyedia</th>
-              <th>Hasil verifikasi</th>
+              <th>Hasil pencocokan</th>
               <th>Status transaksi</th>
               <th>Keterangan</th>
             </tr>
@@ -3511,10 +3659,7 @@ function ConfirmationPage({ data }: { data: ReturnType<typeof initialSeed> }) {
                 }[c.state] || 'c-info'
               return (
                 <tr key={c.id}>
-                  <td className="mono">
-                    {c.id}
-                    <div className="muted small">{c.at}</div>
-                  </td>
+                  <td className="mono small">{c.at}</td>
                   <td className="mono">{c.paymentId}</td>
                   <td className="mono">{c.provider}</td>
                   <td>
@@ -3536,23 +3681,26 @@ function ConfirmationPage({ data }: { data: ReturnType<typeof initialSeed> }) {
 
 /* S-22 Log Aktivitas Sistem */
 function LogPage({ data }: { data: ReturnType<typeof initialSeed> }) {
-  const [filterUc, setFilterUc] = useState('')
-  const ucs = useMemo(() => [...new Set(data.log.map((l) => l.uc))].sort(), [data.log])
-  const list = useMemo(() => data.log.filter((l) => !filterUc || l.uc === filterUc), [data.log, filterUc])
+  const [filterCategory, setFilterCategory] = useState('')
+  const categories = useMemo(() => [...new Set(data.log.map((l) => CAT[l.uc] || 'Sistem'))].sort(), [data.log])
+  const list = useMemo(
+    () => data.log.filter((l) => !filterCategory || (CAT[l.uc] || 'Sistem') === filterCategory),
+    [data.log, filterCategory]
+  )
 
   return (
     <>
       <div className="head">
         <div>
-          <h1>Log aktivitas sistem</h1>
-          <p className="muted">Use case beraktor Sistem dan layanan eksternal tercatat di sini sehingga dapat diamati saat demonstrasi.</p>
+          <h1>Log aktivitas</h1>
+          <p className="muted">Catatan aktivitas pengguna, proses otomatis, dan layanan yang terhubung.</p>
         </div>
         <label className="f">
-          Saring use case
-          <select value={filterUc} onChange={(e) => setFilterUc(e.target.value)}>
+          Kategori
+          <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
             <option value="">Semua</option>
-            {ucs.map((u) => (
-              <option key={u}>{u}</option>
+            {categories.map((c) => (
+              <option key={c}>{c}</option>
             ))}
           </select>
         </label>
@@ -3563,8 +3711,8 @@ function LogPage({ data }: { data: ReturnType<typeof initialSeed> }) {
           <thead>
             <tr>
               <th>Waktu</th>
-              <th>Use case</th>
-              <th>Peristiwa</th>
+              <th>Kategori</th>
+              <th>Aktivitas</th>
             </tr>
           </thead>
           <tbody>
@@ -3572,7 +3720,7 @@ function LogPage({ data }: { data: ReturnType<typeof initialSeed> }) {
               <tr key={idx}>
                 <td className="mono small">{l.t}</td>
                 <td>
-                  <span className="tag">{l.uc}</span>
+                  <span className="tag">{CAT[l.uc] || 'Sistem'}</span>
                 </td>
                 <td>{l.msg}</td>
               </tr>

@@ -91,6 +91,35 @@ export type MediaCandidate = {
 }
 
 export const SUBJECTS: Record<string, string> = { mtk: 'Matematika', fis: 'Fisika', bio: 'Biologi' }
+export const CAT: Record<string, string> = {
+  'UC-01': 'Pembuatan soal',
+  'UC-02': 'Pembuatan soal',
+  'UC-03': 'Pembuatan soal',
+  'UC-04': 'Peninjauan',
+  'UC-05': 'Peninjauan',
+  'UC-06': 'Peninjauan',
+  'UC-07': 'Peninjauan',
+  'UC-08': 'Media',
+  'UC-09': 'Media',
+  'UC-10': 'Media',
+  'UC-11': 'Media',
+  'UC-12': 'Media',
+  'UC-13': 'Paket',
+  'UC-14': 'Kuis',
+  'UC-15': 'Kuis',
+  'UC-16': 'Laporan belajar',
+  'UC-17': 'Laporan belajar',
+  'UC-18': 'Laporan belajar',
+  'UC-19': 'Pembayaran',
+  'UC-20': 'Pembayaran',
+  'UC-21': 'Pembayaran',
+}
+
+export const USERS: Record<string, { role: Role; name: string; short: string; title: string }> = {
+  'rina.wulandari@antiremed.id': { role: 'teacher', name: 'Rina Wulandari', short: 'Rina Wulandari', title: 'Pengajar Matematika' },
+  'dimas.pratama@siswa.antiremed.id': { role: 'student', name: 'Dimas Pratama', short: 'Dimas', title: 'Siswa SMP Kelas 8' },
+  'sari.pratama@email.co.id': { role: 'payer', name: 'Sari Pratama', short: 'Ibu Sari', title: 'Orang tua Dimas' },
+}
 export const LEVELS = ['SD Kelas 5', 'SMP Kelas 8', 'SMA Kelas 10', 'SMA Kelas 11', 'SMA Kelas 12 (SNBT)']
 export const TOPICS: Record<string, string[]> = {
   mtk: ['Teorema Pythagoras', 'Statistika', 'Persamaan Linear'],
