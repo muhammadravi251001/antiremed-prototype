@@ -11,7 +11,6 @@ import {
   IMG,
   initialSeed,
   LEVELS,
-  Master,
   MediaCandidate,
   MediaItem,
   mkQ,
@@ -557,7 +556,10 @@ function Workspace() {
               <Route path="/logs" element={<LogPage data={data} />} />
 
               {/* Master Page */}
-              <Route path="/master" element={<MasterPage />} />
+              <Route
+                path="/master"
+                element={<MasterPage data={data} setData={setData} addLog={addLog} showToast={showToast} setModal={setModal} />}
+              />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
@@ -3822,49 +3824,226 @@ function LogPage({ data }: { data: ReturnType<typeof initialSeed> }) {
 }
 
 /* Master Data Page */
-function MasterPage() {
-  const [activeTab, setActiveTab] = useState<'education-levels' | 'subjects' | 'topics' | 'package-types'>('subjects')
-  const [records, setRecords] = useState<Master[]>([])
+const MD_TABS: [string, string, string][] = [
+  ['level', 'Jenjang pendidikan', 'JP'],
+  ['subject', 'Mata pelajaran', 'MP'],
+  ['topic', 'Topik / bab', 'TB'],
+  ['ptype', 'Tipe paket', 'TP'],
+]
+
+function MasterPage({
+  data,
+  setData,
+  addLog,
+  showToast,
+  setModal,
+}: {
+  data: ReturnType<typeof initialSeed>
+  setData: React.Dispatch<React.SetStateAction<ReturnType<typeof initialSeed>>>
+  addLog: (uc: string, msg: string) => void
+  showToast: (msg: string, bad?: boolean) => void
+  setModal: (node: React.ReactNode | null) => void
+}) {
+  const [activeTab, setActiveTab] = useState<'level' | 'subject' | 'topic' | 'ptype'>('level')
+  const [filterSubj, setFilterSubj] = useState('')
+  const [newSubj, setNewSubj] = useState(() => Object.keys(SUBJECTS)[0] || 'mtk')
   const [name, setName] = useState('')
-  const [code, setCode] = useState('')
-  const [subjectId, setSubjectId] = useState('')
-  const [subjects, setSubjects] = useState<Master[]>([])
   const [error, setError] = useState('')
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
 
-  useEffect(() => {
-    api<Master[]>(`/api/master/${activeTab}`)
-      .then(setRecords)
-      .catch((err: Error) => setError(err.message))
-    if (activeTab === 'topics') {
-      api<Master[]>('/api/master/subjects')
-        .then(setSubjects)
-        .catch(() => undefined)
-    }
-  }, [activeTab])
+  const [, label, pre] = MD_TABS.find((t) => t[0] === activeTab) || MD_TABS[0]
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-    try {
-      const payload: Record<string, unknown> = { name }
-      if (activeTab === 'package-types') payload.code = code
-      if (activeTab === 'topics') payload.subjectId = subjectId
-      const created = await api<Master>(`/api/master/${activeTab}`, json('POST', payload))
-      setRecords((prev) => [...prev, created])
-      setName('')
-      setCode('')
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Gagal menambahkan data')
+  const rows = useMemo(() => {
+    if (activeTab === 'level') {
+      return LEVELS.map((n) => ({
+        key: n,
+        name: n,
+        used: data.questions.filter((q) => q.level === n).length,
+        unit: 'soal',
+      }))
     }
+    if (activeTab === 'subject') {
+      return Object.entries(SUBJECTS).map(([k, n]) => ({
+        key: k,
+        name: n,
+        used: data.questions.filter((q) => q.subject === k).length,
+        unit: 'soal',
+        extra: `${(TOPICS[k] || []).length} topik`,
+      }))
+    }
+    if (activeTab === 'topic') {
+      return Object.entries(TOPICS)
+        .flatMap(([k, arr]) =>
+          arr.map((n) => ({
+            key: `${k}|${n}`,
+            name: n,
+            subj: k,
+            used: data.questions.filter((q) => q.subject === k && q.topic === n).length,
+            unit: 'soal',
+          }))
+        )
+        .filter((r) => !filterSubj || r.subj === filterSubj)
+    }
+    return PKG_TYPES.map((n) => ({
+      key: n,
+      name: n,
+      used: data.packages.filter((p) => p.type === n).length,
+      unit: 'paket',
+    }))
+  }, [activeTab, data.questions, data.packages, filterSubj])
+
+  function validate(tab: string, rawName: string, subj: string | null, exceptKey: string | null): [string | null, string] {
+    const trimmed = rawName.trim().replace(/\s+/g, ' ')
+    if (!trimmed) return [null, 'Nama wajib diisi']
+    if (trimmed.length < 2) return [null, 'Nama minimal 2 karakter']
+    const pool =
+      tab === 'topic' && subj
+        ? (TOPICS[subj] || []).filter((n) => `${subj}|${n}` !== exceptKey)
+        : tab === 'level'
+        ? LEVELS.filter((n) => n !== exceptKey)
+        : tab === 'subject'
+        ? Object.values(SUBJECTS).filter((n) => n !== exceptKey && SUBJECTS[exceptKey || ''] !== n)
+        : PKG_TYPES.filter((n) => n !== exceptKey)
+
+    if (pool.some((n) => n.toLowerCase() === trimmed.toLowerCase())) {
+      return [null, `"${trimmed}" sudah ada`]
+    }
+    return [trimmed, '']
   }
 
-  async function handleDelete(itemId: string) {
-    try {
-      await api(`/api/master/${activeTab}/${itemId}`, json('DELETE'))
-      setRecords((prev) => prev.filter((r) => r.id !== itemId))
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Gagal menghapus data')
+  function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    const [validated, err] = validate(activeTab, name, activeTab === 'topic' ? newSubj : null, null)
+    if (err || !validated) {
+      setError(err)
+      return
     }
+
+    if (activeTab === 'level') {
+      LEVELS.push(validated)
+    } else if (activeTab === 'subject') {
+      let k = validated.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 8) || 'mp'
+      while (SUBJECTS[k]) k += 'x'
+      SUBJECTS[k] = validated
+      TOPICS[k] = []
+    } else if (activeTab === 'topic') {
+      TOPICS[newSubj] = TOPICS[newSubj] || []
+      TOPICS[newSubj].push(validated)
+    } else {
+      PKG_TYPES.push(validated)
+    }
+
+    addLog('MD', `${label} "${validated}" ditambahkan`)
+    showToast(`"${validated}" ditambahkan`)
+    setName('')
+    // Trigger re-render
+    setData((prev) => ({ ...prev }))
+  }
+
+  function handleRename(key: string, raw: string) {
+    const subj = activeTab === 'topic' ? key.split('|')[0] : null
+    const old =
+      activeTab === 'topic'
+        ? key.split('|').slice(1).join('|')
+        : activeTab === 'subject'
+        ? SUBJECTS[key]
+        : key
+    const [validated, err] = validate(activeTab, raw, subj, key)
+    if (err || !validated) {
+      showToast(err, true)
+      return
+    }
+    if (validated === old) {
+      setEditingKey(null)
+      return
+    }
+
+    if (activeTab === 'level') {
+      const idx = LEVELS.indexOf(old)
+      if (idx !== -1) LEVELS[idx] = validated
+      setData((prev) => ({
+        ...prev,
+        questions: prev.questions.map((q) => (q.level === old ? { ...q, level: validated } : q)),
+      }))
+    } else if (activeTab === 'subject') {
+      SUBJECTS[key] = validated
+      setData((prev) => ({ ...prev }))
+    } else if (activeTab === 'topic') {
+      if (subj && TOPICS[subj]) {
+        const arr = TOPICS[subj]
+        const idx = arr.indexOf(old)
+        if (idx !== -1) arr[idx] = validated
+      }
+      setData((prev) => ({
+        ...prev,
+        questions: prev.questions.map((q) => (q.subject === subj && q.topic === old ? { ...q, topic: validated } : q)),
+      }))
+    } else {
+      const idx = PKG_TYPES.indexOf(old)
+      if (idx !== -1) PKG_TYPES[idx] = validated
+      setData((prev) => ({
+        ...prev,
+        packages: prev.packages.map((p) => (p.type === old ? { ...p, type: validated } : p)),
+      }))
+    }
+
+    setEditingKey(null)
+    addLog('MD', `"${old}" diubah menjadi "${validated}"`)
+    showToast('Perubahan disimpan')
+  }
+
+  function handleDelete(key: string) {
+    const row = rows.find((r) => r.key === key)
+    if (!row) return
+    if (row.used > 0) {
+      showToast(`Tidak dapat dihapus karena masih dipakai ${row.used} ${row.unit}`, true)
+      return
+    }
+
+    setModal(
+      <div className="scrim">
+        <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgT">
+          <h2 id="dlgT">Hapus "{row.name}"?</h2>
+          <p>Data ini akan dihapus dari pilihan di seluruh aplikasi.</p>
+          <div className="dfoot">
+            <button className="btn" onClick={() => setModal(null)} type="button">
+              Batal
+            </button>
+            <button
+              className="btn danger"
+              onClick={() => {
+                setModal(null)
+                if (activeTab === 'level') {
+                  const idx = LEVELS.indexOf(row.name)
+                  if (idx !== -1) LEVELS.splice(idx, 1)
+                } else if (activeTab === 'subject') {
+                  delete SUBJECTS[key]
+                  delete TOPICS[key]
+                  if (filterSubj === key) setFilterSubj('')
+                } else if (activeTab === 'topic') {
+                  const s = key.split('|')[0]
+                  if (TOPICS[s]) {
+                    const idx = TOPICS[s].indexOf(row.name)
+                    if (idx !== -1) TOPICS[s].splice(idx, 1)
+                  }
+                } else {
+                  const idx = PKG_TYPES.indexOf(row.name)
+                  if (idx !== -1) PKG_TYPES.splice(idx, 1)
+                }
+                addLog('MD', `"${row.name}" dihapus`)
+                showToast(`"${row.name}" dihapus`)
+                setData((prev) => ({ ...prev }))
+              }}
+              type="button"
+            >
+              Hapus
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -3872,95 +4051,248 @@ function MasterPage() {
       <div className="head">
         <div>
           <h1>Data master</h1>
-          <p className="muted">Kelola jenjang pendidikan, mata pelajaran, topik, dan tipe paket.</p>
+          <p className="muted">Kelola jenjang pendidikan, mata pelajaran, topik, dan tipe paket yang dipakai di seluruh aplikasi.</p>
         </div>
       </div>
 
-      <div className="tabs">
-        {[
-          ['education-levels', 'Jenjang Pendidikan'],
-          ['subjects', 'Mata Pelajaran'],
-          ['topics', 'Topik / Bab'],
-          ['package-types', 'Tipe Paket'],
-        ].map(([k, label]) => (
+      <div className="tabs" role="tablist" aria-label="Jenis data master">
+        {MD_TABS.map(([k, tabLabel]) => (
           <button
             key={k}
+            id={`mdt-${k}`}
             className={`tab ${activeTab === k ? 'on' : ''}`}
-            onClick={() => setActiveTab(k as 'education-levels' | 'subjects' | 'topics' | 'package-types')}
+            role="tab"
+            aria-selected={activeTab === k}
+            aria-controls="mdpanel"
+            onClick={() => {
+              setActiveTab(k as 'level' | 'subject' | 'topic' | 'ptype')
+              setError('')
+              setEditingKey(null)
+            }}
             type="button"
           >
-            {label}
+            {tabLabel}
           </button>
         ))}
       </div>
 
-      {error && (
-        <div className="note bad">
-          <div>{error}</div>
+      <div id="mdpanel" role="tabpanel" aria-labelledby={`mdt-${activeTab}`} className="stack" style={{ gap: 'var(--s4)' }}>
+        <form className="card stack" onSubmit={handleAdd} noValidate>
+          <h2 className="h3">Tambah {label.toLowerCase()}</h2>
+          <div className="row" style={{ alignItems: 'flex-start' }}>
+            {activeTab === 'topic' && (
+              <label className="f" style={{ minWidth: 180 }}>
+                Mata pelajaran
+                <select value={newSubj} onChange={(e) => setNewSubj(e.target.value)}>
+                  {Object.entries(SUBJECTS).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="f" style={{ flex: 1, minWidth: 200 }}>
+              Nama
+              <input
+                type="text"
+                maxLength={60}
+                autoComplete="off"
+                placeholder={
+                  activeTab === 'level'
+                    ? 'Contoh: SMP Kelas 9'
+                    : activeTab === 'subject'
+                    ? 'Contoh: Kimia'
+                    : activeTab === 'topic'
+                    ? 'Contoh: Teorema Thales'
+                    : 'Contoh: Try Out'
+                }
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  setError('')
+                }}
+                className={error ? 'invalid' : ''}
+              />
+              {error && (
+                <span className="err" id="mdErr">
+                  <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3 2 20h20z" />
+                    <path d="M12 10v4M12 17h.01" />
+                  </svg>
+                  {error}
+                </span>
+              )}
+            </label>
+            <button className="btn primary" type="submit" style={{ marginTop: 24 }}>
+              <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m5 12 5 5 9-10" />
+              </svg>
+              Tambah
+            </button>
+          </div>
+        </form>
+
+        <div className="row between">
+          <span className="small muted" aria-live="polite">
+            {rows.length} {label.toLowerCase()}
+          </span>
+          {activeTab === 'topic' && (
+            <label className="row small" style={{ fontWeight: 600 }}>
+              Saring
+              <select
+                value={filterSubj}
+                onChange={(e) => {
+                  setFilterSubj(e.target.value)
+                  setEditingKey(null)
+                }}
+                style={{ minHeight: 36, width: 'auto' }}
+              >
+                <option value="">Semua mata pelajaran</option>
+                {Object.entries(SUBJECTS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
-      )}
 
-      <form className="card row" onSubmit={handleAdd}>
-        <input
-          type="text"
-          placeholder="Nama data..."
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          style={{ maxWidth: 280 }}
-        />
-        {activeTab === 'package-types' && (
-          <input
-            type="text"
-            placeholder="Kode (contoh: SNBT)"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            required
-            style={{ maxWidth: 180 }}
-          />
+        {rows.length > 0 ? (
+          <div className="tw cards" tabIndex={0} role="region" aria-label={`Daftar ${label.toLowerCase()}`}>
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nama</th>
+                  {activeTab === 'topic' && <th>Mata pelajaran</th>}
+                  {activeTab === 'subject' && <th>Topik</th>}
+                  <th>Dipakai</th>
+                  <th>
+                    <span className="sr">Aksi</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const editing = editingKey === r.key
+                  return (
+                    <tr key={r.key}>
+                      <td className="mono" data-label="ID">
+                        {pre}-{String(i + 1).padStart(2, '0')}
+                      </td>
+                      <td className="full" data-label="Nama">
+                        {editing ? (
+                          <form
+                            className="row"
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              handleRename(r.key, editName)
+                            }}
+                            style={{ flexWrap: 'nowrap' }}
+                          >
+                            <label className="sr" htmlFor="mdEditName">
+                              Nama baru
+                            </label>
+                            <input
+                              id="mdEditName"
+                              type="text"
+                              maxLength={60}
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              autoFocus
+                            />
+                            <button className="btn sm primary" type="submit">
+                              Simpan
+                            </button>
+                            <button className="btn sm" onClick={() => setEditingKey(null)} type="button">
+                              Batal
+                            </button>
+                          </form>
+                        ) : (
+                          <b>{r.name}</b>
+                        )}
+                      </td>
+                      {activeTab === 'topic' && (
+                        <td data-label="Mata pelajaran">{SUBJECTS[(r as { subj?: string }).subj || ''] || '-'}</td>
+                      )}
+                      {activeTab === 'subject' && (
+                        <td data-label="Topik">{(r as { extra?: string }).extra || '-'}</td>
+                      )}
+                      <td data-label="Dipakai">
+                        {r.used ? (
+                          <span className="chip c-info">{r.used} {r.unit}</span>
+                        ) : (
+                          <span className="chip c-idle">Belum dipakai</span>
+                        )}
+                      </td>
+                      <td data-label="Aksi">
+                        <div className="row" style={{ justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+                          {!editing && (
+                            <>
+                              <button
+                                className="btn sm"
+                                onClick={() => {
+                                  setEditingKey(r.key)
+                                  setEditName(r.name)
+                                }}
+                                type="button"
+                                aria-label={`Ubah ${r.name}`}
+                              >
+                                <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path d="M4 20h4L19 9l-4-4L4 16z" />
+                                  <path d="m13.5 6.5 4 4" />
+                                </svg>
+                                Ubah
+                              </button>
+                              <button
+                                className="btn sm danger"
+                                onClick={() => handleDelete(r.key)}
+                                type="button"
+                                disabled={r.used > 0}
+                                title={r.used > 0 ? `Masih dipakai ${r.used} ${r.unit}` : undefined}
+                                aria-label={`Hapus ${r.name}`}
+                              >
+                                <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path d="M4 7h16" />
+                                  <path d="M9 7V4h6v3" />
+                                  <path d="M6 7l1 13h10l1-13" />
+                                </svg>
+                                Hapus
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="card">
+            <div className="empty has-ic">
+              <span className="eic">
+                <svg className="ic lg" viewBox="0 0 24 24" aria-hidden="true">
+                  <ellipse cx="12" cy="5" rx="8" ry="3" />
+                  <path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+                  <path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+                </svg>
+              </span>
+              <b>Belum ada data</b>
+              <span>
+                {activeTab === 'topic' && filterSubj
+                  ? 'Belum ada topik untuk mata pelajaran ini. Tambahkan melalui formulir di atas.'
+                  : 'Tambahkan data pertama melalui formulir di atas.'}
+              </span>
+            </div>
+          </div>
         )}
-        {activeTab === 'topics' && (
-          <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} required style={{ maxWidth: 200 }}>
-            <option value="">Pilih Mapel</option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <button className="btn primary" type="submit">
-          Tambah
-        </button>
-      </form>
-
-      <div className="tw">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Nama</th>
-              {activeTab === 'package-types' && <th>Kode</th>}
-              {activeTab === 'topics' && <th>Mata Pelajaran</th>}
-              <th>Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((r) => (
-              <tr key={r.id}>
-                <td className="mono">{r.id.slice(-8)}</td>
-                <td>{r.name}</td>
-                {activeTab === 'package-types' && <td className="mono">{r.code}</td>}
-                {activeTab === 'topics' && <td>{r.subject?.name || '-'}</td>}
-                <td>
-                  <button className="btn sm danger" onClick={() => handleDelete(r.id)} type="button">
-                    Hapus
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <p className="xs muted">
+          Data yang masih dipakai soal atau paket tidak dapat dihapus. Mengubah nama akan memperbarui semua soal dan paket terkait.
+        </p>
       </div>
     </>
   )
