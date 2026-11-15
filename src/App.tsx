@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, json } from './api'
 import {
   ActiveAttemptState,
@@ -1412,34 +1412,50 @@ function PipelinePage({
 
 /* S-04 Bank Soal */
 function BankPage({ data, onReviewQ }: { data: ReturnType<typeof initialSeed>; onReviewQ: (id: string) => void }) {
-  const [searchParams, setSearchParams] = useState({
-    qtext: '',
-    status: '',
-    subject: '',
-    level: '',
-    topic: '',
-    media: '',
-  })
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [showFilters, setShowFilters] = useState(false)
+
+  const qtext = searchParams.get('q') || ''
+  const status = searchParams.get('status') || ''
+  const subject = searchParams.get('subject') || ''
+  const level = searchParams.get('level') || ''
+  const topic = searchParams.get('topic') || ''
+  const media = searchParams.get('media') || ''
 
   const topics = useMemo(() => [...new Set(Object.values(TOPICS).flat())], [])
 
+  const activeFiltersCount = useMemo(() => {
+    return [status, subject, level, topic, media].filter(Boolean).length
+  }, [status, subject, level, topic, media])
+
   const filtered = useMemo(() => {
     return data.questions.filter((q) => {
-      if (searchParams.status && q.status !== searchParams.status) return false
-      if (searchParams.subject && q.subject !== searchParams.subject) return false
-      if (searchParams.level && q.level !== searchParams.level) return false
-      if (searchParams.topic && q.topic !== searchParams.topic) return false
-      if (searchParams.media) {
-        if (searchParams.media === 'unmet' && !(q.mediaReq === 'Required' || q.mediaReq === 'NeedsCheck')) return false
-        if (searchParams.media !== 'unmet' && q.mediaReq !== searchParams.media) return false
+      if (status && q.status !== status) return false
+      if (subject && q.subject !== subject) return false
+      if (level && q.level !== level) return false
+      if (topic && q.topic !== topic) return false
+      if (media) {
+        if (media === 'unmet' && !(q.mediaReq === 'Required' || q.mediaReq === 'NeedsCheck')) return false
+        if (media !== 'unmet' && q.mediaReq !== media) return false
       }
-      if (searchParams.qtext) {
-        const needle = searchParams.qtext.toLowerCase()
+      if (qtext) {
+        const needle = qtext.toLowerCase()
         if (!(q.text + q.id).toLowerCase().includes(needle)) return false
       }
       return true
     })
-  }, [data.questions, searchParams])
+  }, [data.questions, status, subject, level, topic, media, qtext])
+
+  function updateParam(key: string, value: string) {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    setSearchParams(next)
+  }
+
+  function handleClearFilter() {
+    setSearchParams(new URLSearchParams())
+  }
 
   return (
     <>
@@ -1450,128 +1466,199 @@ function BankPage({ data, onReviewQ }: { data: ReturnType<typeof initialSeed>; o
         </div>
         <div className="actions">
           <Link className="btn primary" to="/generator">
+            <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" />
+              <path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" />
+            </svg>
             Buat soal
           </Link>
         </div>
       </div>
 
-      <div className="card grid g3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-        <label className="f">
-          Cari
-          <input
-            type="text"
-            placeholder="ID atau kata kunci"
-            value={searchParams.qtext}
-            onChange={(e) => setSearchParams({ ...searchParams, qtext: e.target.value })}
-          />
-        </label>
-        <label className="f">
-          Status
-          <select value={searchParams.status} onChange={(e) => setSearchParams({ ...searchParams, status: e.target.value })}>
-            <option value="">Semua</option>
-            {Object.entries(QS_LABEL).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="f">
-          Mata pelajaran
-          <select value={searchParams.subject} onChange={(e) => setSearchParams({ ...searchParams, subject: e.target.value })}>
-            <option value="">Semua</option>
-            {Object.entries(SUBJECTS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="f">
-          Jenjang
-          <select value={searchParams.level} onChange={(e) => setSearchParams({ ...searchParams, level: e.target.value })}>
-            <option value="">Semua</option>
-            {LEVELS.map((l) => (
-              <option key={l}>{l}</option>
-            ))}
-          </select>
-        </label>
-        <label className="f">
-          Topik
-          <select value={searchParams.topic} onChange={(e) => setSearchParams({ ...searchParams, topic: e.target.value })}>
-            <option value="">Semua</option>
-            {topics.map((t) => (
-              <option key={t}>{t}</option>
-            ))}
-          </select>
-        </label>
-        <label className="f">
-          Media
-          <select value={searchParams.media} onChange={(e) => setSearchParams({ ...searchParams, media: e.target.value })}>
-            <option value="">Semua</option>
-            <option value="unmet">Belum terpenuhi</option>
-            {Object.entries(MR_LABEL).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {filtered.length ? (
-        <div className="tw">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Pertanyaan</th>
-                <th>Taksonomi</th>
-                <th>Media</th>
-                <th>Status</th>
-                <th>Versi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((q) => (
-                <tr key={q.id} className="click" onClick={() => onReviewQ(q.id)} tabIndex={0}>
-                  <td className="mono">{q.id}</td>
-                  <td style={{ minWidth: 240 }}>
-                    {q.text.slice(0, 90)}
-                    {q.text.length > 90 ? '…' : ''}
-                  </td>
-                  <td className="small">
-                    {SUBJECTS[q.subject] || q.subject}
-                    <br />
-                    <span className="muted">
-                      {q.level} · {q.topic}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`chip ${MR_CLS[q.mediaReq]}`}>{MR_LABEL[q.mediaReq]}</span>
-                  </td>
-                  <td>
-                    <span className={`chip ${QS_CLS[q.status]}`}>{QS_LABEL[q.status]}</span>
-                  </td>
-                  <td className="num mono">v{q.version}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="card empty">
-          <b>Tidak ada soal yang cocok dengan filter.</b>
-          <span>Ubah atau kosongkan filter untuk melihat soal lain.</span>
+      <div className="card stack" role="search">
+        <div className="row" style={{ flexWrap: 'nowrap' }}>
+          <label className="search">
+            <span className="sr">Cari soal</span>
+            <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              id="fQ"
+              type="search"
+              placeholder="Cari ID atau kata kunci soal"
+              value={qtext}
+              onChange={(e) => updateParam('q', e.target.value)}
+              autoComplete="off"
+            />
+          </label>
           <button
-            className="btn"
-            onClick={() => setSearchParams({ qtext: '', status: '', subject: '', level: '', topic: '', media: '' })}
+            className="btn filter-toggle"
             type="button"
+            aria-expanded={showFilters}
+            aria-controls="fpanel"
+            onClick={() => setShowFilters((prev) => !prev)}
           >
-            Kosongkan filter
+            <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 5h18l-7 8v6l-4 2v-8z" />
+            </svg>
+            <span>Filter{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}</span>
           </button>
         </div>
-      )}
+
+        <div
+          className={`grid filters-panel ${showFilters ? 'open' : ''}`}
+          id="fpanel"
+          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}
+        >
+          <label className="f">
+            Status
+            <select id="fStatus" value={status} onChange={(e) => updateParam('status', e.target.value)}>
+              <option value="">Semua</option>
+              {Object.entries(QS_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="f">
+            Mata pelajaran
+            <select id="fSubj" value={subject} onChange={(e) => updateParam('subject', e.target.value)}>
+              <option value="">Semua</option>
+              {Object.entries(SUBJECTS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="f">
+            Jenjang
+            <select id="fLevel" value={level} onChange={(e) => updateParam('level', e.target.value)}>
+              <option value="">Semua</option>
+              {LEVELS.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="f">
+            Topik
+            <select id="fTopic" value={topic} onChange={(e) => updateParam('topic', e.target.value)}>
+              <option value="">Semua</option>
+              {topics.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="f">
+            Gambar
+            <select id="fMedia" value={media} onChange={(e) => updateParam('media', e.target.value)}>
+              <option value="">Semua</option>
+              <option value="unmet">Menunggu gambar</option>
+              {Object.entries(MR_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div id="bankResults" className="stack">
+        <div className="row between">
+          <span className="small muted" aria-live="polite">
+            {filtered.length} soal{activeFiltersCount > 0 || qtext ? ' sesuai pencarian' : ''}
+          </span>
+          {(activeFiltersCount > 0 || qtext) && (
+            <button className="btn sm ghost" onClick={handleClearFilter} type="button">
+              <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+              Hapus filter
+            </button>
+          )}
+        </div>
+
+        {filtered.length ? (
+          <div className="tw cards" tabIndex={0} role="region" aria-label="Daftar soal">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Pertanyaan</th>
+                  <th>Klasifikasi</th>
+                  <th>Gambar</th>
+                  <th>Status</th>
+                  <th>Versi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((q) => (
+                  <tr
+                    key={q.id}
+                    className="click"
+                    onClick={() => onReviewQ(q.id)}
+                    tabIndex={0}
+                    aria-label={`Tinjau ${q.id}`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onReviewQ(q.id)
+                      }
+                    }}
+                  >
+                    <td className="mono" data-label="">
+                      {q.id}
+                    </td>
+                    <td className="full" style={{ minWidth: 260 }} data-label="Pertanyaan">
+                      {q.text.slice(0, 110)}
+                      {q.text.length > 110 ? '…' : ''}
+                    </td>
+                    <td className="small" data-label="Klasifikasi">
+                      {SUBJECTS[q.subject] || q.subject}
+                      <br />
+                      <span className="muted">
+                        {q.level} · {q.topic}
+                      </span>
+                    </td>
+                    <td data-label="Gambar">
+                      <span className={`chip ${MR_CLS[q.mediaReq]}`}>{MR_LABEL[q.mediaReq]}</span>
+                    </td>
+                    <td data-label="Status">
+                      <span className={`chip ${QS_CLS[q.status]}`}>{QS_LABEL[q.status]}</span>
+                    </td>
+                    <td className="num mono" data-label="">
+                      v{q.version}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="card">
+            <div className="empty has-ic">
+              <span className="eic">
+                <svg className="ic lg" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+              </span>
+              <b>Tidak ada soal yang cocok</b>
+              <span>Ubah kata kunci atau hapus filter untuk melihat soal lain.</span>
+              <button className="btn" onClick={handleClearFilter} type="button">
+                Hapus filter
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   )
 }
@@ -1792,70 +1879,118 @@ function ReviewPage({
           </p>
         </div>
 
-        <div className="stack">
-          <div className="card stack">
-            <h3>Pemeriksaan kelengkapan</h3>
+        <div className="stack sticky">
+          <section className="card stack" aria-labelledby="hChk">
+            <h2 className="h3" id="hChk">Kelengkapan soal</h2>
             {iss.length ? (
               iss.map((i) => (
-                <div key={i} className="small" style={{ color: 'var(--bad)' }}>
-                  ✕ {i}
+                <div key={i} className="row small" style={{ color: 'var(--bad)', flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+                  <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6 6 18" />
+                  </svg>
+                  <span>{i}</span>
                 </div>
               ))
             ) : (
-              <div className="small" style={{ color: 'var(--ok)' }}>
-                ✓ Pertanyaan, pilihan, kunci, pembahasan, dan gambar lengkap
+              <div className="row small" style={{ color: 'var(--ok)', flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+                <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m5 12 5 5 9-10" />
+                </svg>
+                <span>Pertanyaan, pilihan, kunci, pembahasan, dan gambar lengkap</span>
               </div>
             )}
-            <div className="small muted">
+            <div className="xs muted">
               {q.options.length} pilihan jawaban · {SUBJECTS[q.subject] || q.subject} · {q.level}
             </div>
-          </div>
+            {canDecide && iss.length > 0 && (
+              <span className="small muted" id="acc-why">
+                Lengkapi kekurangan di atas untuk dapat menerima soal.
+              </span>
+            )}
+          </section>
 
           {canDecide ? (
-            <div className="card stack">
-              <h3>Keputusan</h3>
-              <button className="btn primary" onClick={handleAccept} disabled={iss.length > 0} type="button">
+            <section className="card stack decide-card" aria-labelledby="hDec">
+              <h2 className="h3" id="hDec">Keputusan</h2>
+              <button
+                className="btn primary block"
+                onClick={handleAccept}
+                disabled={iss.length > 0}
+                aria-describedby={iss.length > 0 ? 'acc-why' : undefined}
+                type="button"
+              >
+                <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m5 12 5 5 9-10" />
+                </svg>
                 Terima soal
               </button>
-              {iss.length > 0 && <span className="small muted">Lengkapi kekurangan di atas untuk dapat menerima soal.</span>}
-              <button className="btn" onClick={() => onEditQ(q.id)} type="button">
-                Ubah soal
-              </button>
-              {q.mediaReq !== 'NotRequired' && (
-                <button className="btn" onClick={() => onMediaQ(q.id)} type="button">
-                  Atur gambar
+              <div className="stack" style={{ gap: 8 }}>
+                <button className="btn" onClick={() => onEditQ(q.id)} type="button">
+                  <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 20h4L19 9l-4-4L4 16z" />
+                    <path d="m13.5 6.5 4 4" />
+                  </svg>
+                  Ubah soal
                 </button>
-              )}
-              {q.status === 'InReview' && (
-                <button className="btn" onClick={handleDefer} type="button">
-                  Tunda, tandai perlu revisi
-                </button>
-              )}
+                {q.mediaReq !== 'NotRequired' && (
+                  <button className="btn" onClick={() => onMediaQ(q.id)} type="button">
+                    <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="3" y="4" width="18" height="16" rx="2" />
+                      <circle cx="9" cy="10" r="2" />
+                      <path d="m21 16-5-5-9 9" />
+                    </svg>
+                    Atur gambar
+                  </button>
+                )}
+                {q.status === 'InReview' && (
+                  <button className="btn" onClick={handleDefer} type="button">
+                    <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 7v5l3 2" />
+                    </svg>
+                    Tunda, tandai perlu revisi
+                  </button>
+                )}
+              </div>
               <button className="btn danger" onClick={handleReject} type="button">
+                <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
                 Tolak soal
               </button>
-            </div>
+            </section>
           ) : q.status === 'Accepted' ? (
-            <div className="card stack">
+            <section className="card stack decide-card">
               <button className="btn" onClick={() => onEditQ(q.id)} type="button">
+                <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 20h4L19 9l-4-4L4 16z" />
+                  <path d="m13.5 6.5 4 4" />
+                </svg>
                 Ubah soal tervalidasi
               </button>
-            </div>
+            </section>
           ) : null}
 
-          <div className="card stack">
-            <h3>Riwayat peninjauan</h3>
-            {q.history.length ? (
-              q.history.map((h, idx) => (
-                <div key={idx} className="small">
-                  <b>{h.d}</b> oleh {h.by} <span className="mono muted">{h.at}</span>
-                  {h.c && <div className="muted">“{h.c}”</div>}
-                </div>
-              ))
-            ) : (
-              <span className="small muted">Belum ada keputusan.</span>
-            )}
-          </div>
+          <details className="acc">
+            <summary>
+              Riwayat ({q.history.length})
+              <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div className="acc-body stack">
+              {q.history.length ? (
+                q.history.map((h, idx) => (
+                  <div key={idx} className="small">
+                    <b style={{ color: 'var(--fg)' }}>{h.d}</b> oleh {h.by} <span className="mono">{h.at}</span>
+                    {h.c && <div>“{h.c}”</div>}
+                  </div>
+                ))
+              ) : (
+                <span className="small">Belum ada keputusan.</span>
+              )}
+            </div>
+          </details>
         </div>
       </div>
     </>
