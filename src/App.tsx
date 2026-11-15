@@ -91,6 +91,8 @@ function Workspace() {
   })
   const [simPay, setSimPay] = useState<SimPaySettings>({ status: 'SUCCESS', variant: 'valid' })
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [toasts, setToasts] = useState<{ id: number; msg: string; bad?: boolean }[]>([])
   const [modal, setModal] = useState<React.ReactNode | null>(null)
 
@@ -201,9 +203,9 @@ function Workspace() {
 
   const currentUser = useMemo(() => {
     if (!role) return null
-    if (role === 'teacher') return USERS['rina.wulandari@antiremed.id']
-    if (role === 'student') return USERS['dimas.pratama@siswa.antiremed.id']
-    return USERS['sari.pratama@email.co.id']
+    if (role === 'teacher') return { ...USERS['rina.wulandari@antiremed.id'], email: 'rina.wulandari@antiremed.id' }
+    if (role === 'student') return { ...USERS['dimas.pratama@siswa.antiremed.id'], email: 'dimas.pratama@siswa.antiremed.id' }
+    return { ...USERS['sari.pratama@email.co.id'], email: 'sari.pratama@email.co.id' }
   }, [role])
 
   useEffect(() => {
@@ -212,20 +214,51 @@ function Workspace() {
         e.preventDefault()
         setDrawerOpen((prev) => !prev)
       }
+      if (e.key === 'Escape') {
+        setUserMenuOpen(false)
+        setMobileNavOpen(false)
+      }
+    }
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.mwrap')) {
+        setUserMenuOpen(false)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('click', handleClickOutside)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('click', handleClickOutside)
+    }
   }, [])
 
   return (
     <div>
+      <a className="skip" href="#main">
+        Lewati ke konten utama
+      </a>
       <header className="top">
-        <Link className="brand" to={role ? '/' : '/landing'}>
-          <div className="mk">A</div>
-          <div>
+        {role && (
+          <button
+            className="iconbtn menu-btn"
+            id="menuBtn"
+            type="button"
+            aria-label="Buka menu navigasi"
+            aria-controls="side"
+            aria-expanded={mobileNavOpen}
+            onClick={() => setMobileNavOpen(true)}
+          >
+            <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        )}
+        <Link className="brand" to={role ? '/' : '/landing'} onClick={() => setMobileNavOpen(false)}>
+          <span className="mk" aria-hidden="true">A</span>
+          <span>
             Antiremed Studio
             <small>Bimbel Antiremed</small>
-          </div>
+          </span>
         </Link>
         <div className="sp" />
         {currentUser ? (
@@ -233,24 +266,58 @@ function Workspace() {
             <span className="env" title="Lingkungan staging: data dan transaksi tidak diproses oleh layanan produksi">
               Staging
             </span>
-            <div className="user">
-              <div className="avatar">
-                {currentUser.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}
-              </div>
-              <div className="who">
-                <b>{currentUser.name}</b>
-                <span>{currentUser.title}</span>
+            <div className="mwrap">
+              <button
+                className="userbtn"
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                aria-controls="umenu"
+                aria-label={`Menu akun ${currentUser.name}`}
+                onClick={() => setUserMenuOpen((prev) => !prev)}
+              >
+                <span className="avatar" aria-hidden="true">
+                  {currentUser.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}
+                </span>
+                <span className="who">
+                  <b>{currentUser.name}</b>
+                  <span>{currentUser.title}</span>
+                </span>
+                <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              <div className="menu" id="umenu" role="menu" hidden={!userMenuOpen}>
+                <div className="mhead">
+                  <b>{currentUser.name}</b>
+                  <div className="xs muted">{currentUser.title}</div>
+                  <div className="xs muted">{currentUser.email}</div>
+                </div>
+                <button
+                  className="mi danger"
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false)
+                    handleLogout()
+                  }}
+                >
+                  <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4" />
+                    <path d="M10 17l-5-5 5-5" />
+                    <path d="M5 12h11" />
+                  </svg>
+                  Keluar
+                </button>
               </div>
             </div>
-            <button className="btn sm" onClick={handleLogout} type="button">
-              Keluar
-            </button>
           </div>
         ) : (
           <nav className="lp-nav" aria-label="Halaman utama">
             <a href="#fitur">Fitur</a>
             <a href="#cara-kerja">Cara kerja</a>
             <a href="#paket">Paket belajar</a>
+            <a href="#faq">Tanya jawab</a>
             <button className="btn primary sm" onClick={() => navigate('/login')} type="button">
               Masuk
             </button>
@@ -258,29 +325,51 @@ function Workspace() {
         )}
       </header>
 
-      <div className={`shell ${!role ? 'single-col' : ''}`}>
+      <div className={`shell ${!role ? 'public single-col' : ''}`}>
         {role && (
-          <nav className="side" aria-label="Navigasi">
-            {ROLE_NAV[role].map(([grp, items]) => (
-              <React.Fragment key={grp}>
-                {grp ? <div className="grp">{grp}</div> : null}
-                {items.map(([to, label, badge]) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    end={to === '/'}
-                    className={({ isActive }) => `nav ${isActive ? 'on' : ''}`}
-                  >
-                    <span>{label}</span>
-                    {badge === 'review' && waitingReviewCount > 0 && <span className="cnt">{waitingReviewCount}</span>}
-                  </NavLink>
-                ))}
-              </React.Fragment>
-            ))}
-          </nav>
+          <>
+            <nav className={`side ${mobileNavOpen ? 'open' : ''}`} id="side" aria-label="Navigasi utama">
+              <div className="row between" style={{ padding: '0 var(--s1) var(--s2)' }}>
+                <span className="xs muted" style={{ fontWeight: 700 }}>Menu</span>
+                <button
+                  className="iconbtn navclose"
+                  type="button"
+                  aria-label="Tutup menu"
+                  onClick={() => setMobileNavOpen(false)}
+                >
+                  <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6 6 18" />
+                  </svg>
+                </button>
+              </div>
+              {ROLE_NAV[role].map(([grp, items]) => (
+                <React.Fragment key={grp}>
+                  {grp ? <div className="grp">{grp}</div> : null}
+                  {items.map(([to, label, badge]) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      end={to === '/'}
+                      className={({ isActive }) => `nav ${isActive ? 'on' : ''}`}
+                      onClick={() => setMobileNavOpen(false)}
+                    >
+                      <span>{label}</span>
+                      {badge === 'review' && waitingReviewCount > 0 && <span className="cnt">{waitingReviewCount}</span>}
+                    </NavLink>
+                  ))}
+                </React.Fragment>
+              ))}
+              <div className="foot">Bimbel Antiremed · lingkungan staging</div>
+            </nav>
+            <div
+              className="navscrim"
+              hidden={!mobileNavOpen}
+              onClick={() => setMobileNavOpen(false)}
+            />
+          </>
         )}
 
-        <main>
+        <main id="main" tabIndex={-1}>
           <div className="wrap">
             <Routes>
               {/* Landing Page */}
