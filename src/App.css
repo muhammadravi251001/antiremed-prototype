@@ -864,6 +864,7 @@ hr {
 }
 
 .btn.block {
+  display: inline-flex;
   width: 100%;
 }
 
@@ -2081,6 +2082,9 @@ details.acc .acc-body {
 }
 
 .decide-card .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   white-space: normal;
   text-align: center;
 }
